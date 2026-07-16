@@ -1,0 +1,11 @@
+# 依赖
+/node_modules/
+frontend/node_modules/
+backend/bin/
+backend/data/
+*.db
+.env
+.DS_Store
+dist/
+frontend/dist/
+*.exe
