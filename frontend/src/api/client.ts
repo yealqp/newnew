@@ -188,8 +188,8 @@ export const api = {
 
   me: () => client.get('/me'),
 
-  changePassword: (old_password: string, new_password: string) =>
-    client.post('/change-password', { old_password, new_password }),
+  updateAccount: (data: { old_password: string; new_username?: string; new_password?: string }) =>
+    client.post<{ username: string; token: string }>('/change-password', data),
 
   listChannels: () => client.get<Channel[]>('/channels'),
   getChannel: (id: number) => client.get<Channel>(`/channels/${id}`),
@@ -225,8 +225,8 @@ export const api = {
   getLog: (id: number) => client.get<RequestLog>(`/logs/${id}`),
 
   dashboard: () => client.get<DashboardData>('/dashboard'),
-  dashboardRange: (start: string, end: string) =>
-    client.get<DashboardRangeData>('/dashboard', { params: { start, end } }),
+  dashboardRange: (start: string, end: string, granularity?: string) =>
+    client.get<DashboardRangeData>('/dashboard', { params: { start, end, granularity } }),
 
   getSettings: () => client.get<Record<string, string>>('/settings'),
   updateSettings: (data: Record<string, string>) => client.put('/settings', data),

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Button,
   Drawer,
@@ -24,9 +24,16 @@ import {
   X,
   AlertCircle,
 } from 'lucide-react'
+import { OpenAI, Anthropic } from '@lobehub/icons'
 import { api, type Channel, type ModelPrice } from '../api/client'
 
 type PricingMap = Record<string, ModelPrice>
+
+// Upstream 协议类型的展示元信息（value 仍为后端约定的 openai/claude）。
+const TYPE_META: Record<string, { label: string; color: string; icon: ReactNode }> = {
+  openai: { label: 'OpenAI', color: 'blue', icon: <OpenAI size={14} /> },
+  claude: { label: 'Anthropic', color: 'purple', icon: <Anthropic size={14} /> },
+}
 
 type PricingRow = {
   key: string
@@ -123,6 +130,68 @@ function emptyMappingRow(): MappingRow {
   }
 }
 
+// 模型映射右侧「上游模型」选择器：下拉源为该渠道的「支持模型」列表；
+// 允许输入列表外的模型名（通过下拉底部的「使用自定义」入口），由父级决定是否加入支持模型。
+function UpstreamModelSelect({
+  value,
+  supportedModels,
+  onChange,
+}: {
+  value: string
+  supportedModels: string[]
+  onChange: (v: string) => void
+}) {
+  const [search, setSearch] = useState('')
+  const searchTrim = search.trim()
+  const showCustom = searchTrim !== '' && !supportedModels.includes(searchTrim)
+  const commit = (v: string) => {
+    onChange(v)
+    setSearch('')
+  }
+  return (
+    <Select
+      className="mono"
+      showSearch
+      allowClear
+      placeholder="选择上游模型（可选）"
+      value={value || undefined}
+      searchValue={search}
+      onSearch={setSearch}
+      options={supportedModels.map((m) => ({ label: m, value: m }))}
+      filterOption={(input, opt) =>
+        String(opt?.value ?? '').toLowerCase().includes(input.toLowerCase())
+      }
+      onChange={(v) => commit(v ?? '')}
+      onInputKeyDown={(e) => {
+        if (e.key === 'Enter' && showCustom) {
+          e.preventDefault()
+          commit(searchTrim)
+        }
+      }}
+      notFoundContent={<span style={{ color: 'var(--text-dim)', fontSize: 12 }}>无匹配模型，回车可用作自定义</span>}
+      popupRender={(menu) => (
+        <>
+          {menu}
+          {showCustom && (
+            <div style={{ padding: 8, borderTop: '1px solid var(--border-soft)' }}>
+              <Button
+                size="small"
+                type="link"
+                icon={<Plus size={14} />}
+                style={{ paddingLeft: 0 }}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => commit(searchTrim)}
+              >
+                使用自定义：“{searchTrim}”
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    />
+  )
+}
+
 function formatTokens(n: number): string {
   if (!n) return '-'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
@@ -137,6 +206,7 @@ export default function Channels() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<Channel | null>(null)
   const [form] = Form.useForm()
+  const supportedModels: string[] = Form.useWatch('models', form) || []
   const [pricingRows, setPricingRows] = useState<PricingRow[]>([])
   const [mappingRows, setMappingRows] = useState<MappingRow[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
@@ -328,16 +398,57 @@ export default function Channels() {
       message.error('请至少配置一个模型定价')
       return
     }
-    const models = (values.models || []) as string[]
+    let models = (values.models || []) as string[]
     if (!models.length) {
       message.error('请选择支持模型')
       return
     }
+
+    // 校验：映射两侧模型若不在「支持模型」列表，提醒用户是否加入。
+    // 请求模型（左侧）不在列表时无法被路由匹配，影响更大，单独提示。
+    const mapping = rowsToMapping(mappingRows)
+    const q = (m: string) => `“${m}”`
+    const reqMissing = Object.keys(mapping).filter((m) => !models.includes(m))
+    const upMissing = Array.from(
+      new Set(Object.values(mapping).filter((m) => m && !models.includes(m))),
+    ).filter((m) => !reqMissing.includes(m))
+    const missing = Array.from(new Set([...reqMissing, ...upMissing]))
+    if (missing.length) {
+      const add = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: '加入支持模型？',
+          content: (
+            <div>
+              {reqMissing.length > 0 && (
+                <p style={{ marginBottom: 8 }}>
+                  请求模型 {reqMissing.map(q).join('、')} 不在支持模型列表中，不加入将无法被路由匹配。
+                </p>
+              )}
+              {upMissing.length > 0 && (
+                <p style={{ marginBottom: 8 }}>
+                  上游模型 {upMissing.map(q).join('、')} 不在支持模型列表中。
+                </p>
+              )}
+              <p style={{ margin: 0 }}>是否将以上模型加入支持模型？</p>
+            </div>
+          ),
+          okText: '加入',
+          cancelText: '暂不加入',
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        })
+      })
+      if (add) {
+        models = [...models, ...missing]
+        form.setFieldsValue({ models })
+      }
+    }
+
     const payload = {
       ...values,
       models: models.join(','),
       pricing: JSON.stringify(pricing),
-      model_mapping: JSON.stringify(rowsToMapping(mappingRows)),
+      model_mapping: JSON.stringify(mapping),
     }
     setSaving(true)
     try {
@@ -393,7 +504,14 @@ export default function Channels() {
       title: '类型',
       dataIndex: 'type',
       width: 100,
-      render: (t: string) => <Tag color={t === 'claude' ? 'purple' : 'blue'}>{t}</Tag>,
+      render: (t: string) => {
+        const meta = TYPE_META[t]
+        return (
+          <Tag color={meta?.color} icon={meta?.icon} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {meta?.label ?? t}
+          </Tag>
+        )
+      },
     },
     {
       title: '模型',
@@ -425,15 +543,6 @@ export default function Channels() {
           {formatTokens(v)}
         </span>
       ),
-    },
-    {
-      title: '定价',
-      dataIndex: 'pricing',
-      width: 100,
-      render: (v: string) => {
-        const n = Object.keys(parsePricing(v)).length
-        return <span className="mono">{n} 个模型</span>
-      },
     },
     {
       title: '优先级/权重',
@@ -496,7 +605,7 @@ export default function Channels() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 className="page-title">渠道</h1>
-          <p className="page-desc">上游提供商 · 协议格式 OpenAI / Claude · 价格单位 ¥/1M tokens</p>
+          <p className="page-desc">上游提供商 · 协议格式 OpenAI / Anthropic · 价格单位 ¥/1M tokens</p>
         </div>
         <Button type="primary" icon={<Plus size={16} />} onClick={openCreate}>
           新建渠道
@@ -540,8 +649,22 @@ export default function Channels() {
             <Form.Item name="type" label="上游格式" rules={[{ required: true }]}>
               <Select
                 options={[
-                  { value: 'openai', label: 'OpenAI' },
-                  { value: 'claude', label: 'Claude' },
+                  {
+                    value: 'openai',
+                    label: (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <OpenAI size={14} /> OpenAI
+                      </span>
+                    ),
+                  },
+                  {
+                    value: 'claude',
+                    label: (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Anthropic size={14} /> Anthropic
+                      </span>
+                    ),
+                  },
                 ]}
               />
             </Form.Item>
@@ -596,7 +719,7 @@ export default function Channels() {
               label="完整 URL"
               valuePropName="checked"
               style={{ marginBottom: 0, minWidth: 88 }}
-              tooltip="开启后，上方输入即为 OpenAI/Claude 的完整请求端点"
+              tooltip="开启后，上方输入即为 OpenAI/Anthropic 的完整请求端点"
             >
               <Switch checkedChildren="开" unCheckedChildren="关" />
             </Form.Item>
@@ -666,11 +789,10 @@ export default function Channels() {
                         onChange={(e) => updateMappingRow(row.key, { request: e.target.value })}
                       />
                       <span className="mapping-arrow">→</span>
-                      <Input
-                        className="mono"
-                        placeholder="upstream-model"
+                      <UpstreamModelSelect
                         value={row.upstream}
-                        onChange={(e) => updateMappingRow(row.key, { upstream: e.target.value })}
+                        supportedModels={supportedModels}
+                        onChange={(v) => updateMappingRow(row.key, { upstream: v })}
                       />
                       <Button
                         type="text"

@@ -602,7 +602,8 @@ h1, .page-title {
 
 .pricing-editor .ant-input,
 .pricing-editor .ant-input-number,
-.mapping-editor .ant-input {
+.mapping-editor .ant-input,
+.mapping-editor .ant-select {
   width: 100% !important;
 }
 

@@ -70,16 +70,16 @@ func Me(c *fiber.Ctx) error {
 
 type changePasswordReq struct {
         OldPassword string `json:"old_password"`
+        NewUsername string `json:"new_username"`
         NewPassword string `json:"new_password"`
 }
 
+// ChangePassword updates the current admin's username and/or password.
+// The current password is always required to authorize the change.
 func ChangePassword(c *fiber.Ctx) error {
         var req changePasswordReq
         if err := c.BodyParser(&req); err != nil {
                 return c.Status(400).JSON(fail("invalid body"))
-        }
-        if len(req.NewPassword) < 6 {
-                return c.Status(400).JSON(fail("password too short"))
         }
         uid, _ := c.Locals(middleware.LocalsUserID).(uint)
         var user model.User
@@ -89,15 +89,43 @@ func ChangePassword(c *fiber.Ctx) error {
         if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.OldPassword)) != nil {
                 return c.Status(400).JSON(fail("old password incorrect"))
         }
-        hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
-        if err != nil {
-                return c.Status(500).JSON(fail("hash error"))
+
+        changed := false
+        if newName := strings.TrimSpace(req.NewUsername); newName != "" && newName != user.Username {
+                if len(newName) < 3 {
+                        return c.Status(400).JSON(fail("username too short"))
+                }
+                var cnt int64
+                db.DB.Model(&model.User{}).Where("username = ? AND id <> ?", newName, user.ID).Count(&cnt)
+                if cnt > 0 {
+                        return c.Status(400).JSON(fail("username already exists"))
+                }
+                user.Username = newName
+                changed = true
         }
-        user.PasswordHash = string(hash)
+        if req.NewPassword != "" {
+                if len(req.NewPassword) < 6 {
+                        return c.Status(400).JSON(fail("password too short"))
+                }
+                hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+                if err != nil {
+                        return c.Status(500).JSON(fail("hash error"))
+                }
+                user.PasswordHash = string(hash)
+                changed = true
+        }
+        if !changed {
+                return c.Status(400).JSON(fail("nothing to update"))
+        }
         if err := db.DB.Save(&user).Error; err != nil {
                 return c.Status(500).JSON(fail(err.Error()))
         }
-        return c.JSON(ok(nil))
+        // 重新签发 JWT，使会话中的用户名保持最新。
+        token, err := middleware.GenerateJWT(user.ID, user.Username)
+        if err != nil {
+                return c.Status(500).JSON(fail("token error"))
+        }
+        return c.JSON(ok(fiber.Map{"username": user.Username, "token": token}))
 }
 
 // ---- Channels ----
@@ -737,7 +765,7 @@ func Dashboard(c *fiber.Ctx) error {
         startStr := strings.TrimSpace(c.Query("start"))
         endStr := strings.TrimSpace(c.Query("end"))
         if startStr != "" && endStr != "" {
-                return dashboardRange(c, startStr, endStr)
+                return dashboardRange(c, startStr, endStr, strings.TrimSpace(c.Query("granularity")))
         }
 
         now := time.Now()
@@ -799,7 +827,7 @@ func Dashboard(c *fiber.Ctx) error {
         }))
 }
 
-func dashboardRange(c *fiber.Ctx, startStr, endStr string) error {
+func dashboardRange(c *fiber.Ctx, startStr, endStr, granularity string) error {
         start, err1 := parseFlexibleTime(startStr)
         end, err2 := parseFlexibleTime(endStr)
         if err1 != nil || err2 != nil {
@@ -829,10 +857,28 @@ func dashboardRange(c *fiber.Ctx, startStr, endStr string) error {
         rpm := float64(summary.Requests) / durationMin
         tpm := totalTokens / durationMin
 
-        // Hourly buckets for short ranges, daily for longer.
-        bucketFmt := "%Y-%m-%d"
-        if end.Sub(start) <= 48*time.Hour {
-                bucketFmt = "%Y-%m-%d %H:00"
+        // Bucket expression per requested granularity. Falls back to auto:
+        // hourly for short ranges, daily for longer.
+        const (
+                hourExpr = "strftime('%Y-%m-%d %H:00', created_at)"
+                dayExpr  = "strftime('%Y-%m-%d', created_at)"
+                // Start-of-week (Monday) as a plain date, so the frontend can parse it.
+                weekExpr = "date(created_at, '-' || ((strftime('%w', created_at) + 6) % 7) || ' days')"
+        )
+        var bucketExpr string
+        switch granularity {
+        case "hour":
+                bucketExpr = hourExpr
+        case "day":
+                bucketExpr = dayExpr
+        case "week":
+                bucketExpr = weekExpr
+        default:
+                if end.Sub(start) <= 48*time.Hour {
+                        bucketExpr = hourExpr
+                } else {
+                        bucketExpr = dayExpr
+                }
         }
 
         type seriesRow struct {
@@ -852,9 +898,9 @@ func dashboardRange(c *fiber.Ctx, startStr, endStr string) error {
         }
         rawSeries := make([]seriesScan, 0)
         _ = db.DB.Model(&model.RequestLog{}).
-                Select("strftime('"+bucketFmt+"', created_at) as time, count(*) as requests, coalesce(sum(prompt_tokens),0) as prompt_tokens, coalesce(sum(completion_tokens),0) as completion_tokens, coalesce(sum(cost_rmb),0) as cost_rmb").
+                Select(bucketExpr+" as time, count(*) as requests, coalesce(sum(prompt_tokens),0) as prompt_tokens, coalesce(sum(completion_tokens),0) as completion_tokens, coalesce(sum(cost_rmb),0) as cost_rmb").
                 Where("created_at >= ? AND created_at <= ?", start, end).
-                Group("strftime('" + bucketFmt + "', created_at)").
+                Group(bucketExpr).
                 Order("time asc").
                 Scan(&rawSeries).Error
 

@@ -15,6 +15,22 @@ import {
 import { Copy, Plus, RefreshCw, Edit, Trash2 } from 'lucide-react'
 import { api, type Token } from '../api/client'
 
+// 解析令牌的模型限制（JSON 数组或逗号分隔）为字符串数组。
+function parseModelLimits(v: string | undefined): string[] {
+  if (!v) return []
+  const s = v.trim()
+  if (!s || s === '[]') return []
+  if (s.startsWith('[')) {
+    try {
+      const arr = JSON.parse(s)
+      return Array.isArray(arr) ? arr.filter(Boolean) : []
+    } catch {
+      return []
+    }
+  }
+  return s.split(',').map((x) => x.trim()).filter(Boolean)
+}
+
 export default function Tokens() {
   const [list, setList] = useState<Token[]>([])
   const [loading, setLoading] = useState(false)
@@ -23,6 +39,7 @@ export default function Tokens() {
   const [editing, setEditing] = useState<Token | null>(null)
   const [form] = Form.useForm()
   const [createdKey, setCreatedKey] = useState<string | null>(null)
+  const [modelOptions, setModelOptions] = useState<string[]>([])
 
   const load = async () => {
     setLoading(true)
@@ -35,8 +52,27 @@ export default function Tokens() {
     }
   }
 
+  // 汇总所有渠道的支持模型，作为模型限制下拉的可选项。
+  const loadModelOptions = async () => {
+    try {
+      const r = await api.listChannels()
+      const set = new Set<string>()
+      for (const ch of r.data || []) {
+        ;(ch.models || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .forEach((m) => set.add(m))
+      }
+      setModelOptions(Array.from(set).sort())
+    } catch {
+      // 忽略：下拉仍可手动输入
+    }
+  }
+
   useEffect(() => {
     load()
+    loadModelOptions()
   }, [])
 
   const copy = async (text: string) => {
@@ -47,7 +83,7 @@ export default function Tokens() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ status: 1, model_limits: '' })
+    form.setFieldsValue({ status: 1, model_limits: [] })
     setOpen(true)
   }
 
@@ -56,21 +92,15 @@ export default function Tokens() {
     form.setFieldsValue({
       name: row.name,
       status: row.status,
-      model_limits: row.model_limits || '',
+      model_limits: parseModelLimits(row.model_limits),
     })
     setOpen(true)
   }
 
   const submit = async () => {
     const values = await form.validateFields()
-    let model_limits = values.model_limits || ''
-    if (model_limits && !model_limits.trim().startsWith('[')) {
-      const arr = model_limits
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter(Boolean)
-      model_limits = JSON.stringify(arr)
-    }
+    const limits = (values.model_limits || []) as string[]
+    const model_limits = limits.length ? JSON.stringify(limits) : ''
     const payload = { ...values, model_limits }
     setSaving(true)
     try {
@@ -220,8 +250,18 @@ export default function Tokens() {
               ]}
             />
           </Form.Item>
-          <Form.Item name="model_limits" label="模型限制" extra="留空不限；逗号分隔或 JSON 数组">
-            <Input placeholder="gpt-4o,deepseek-v4-flash" className="mono" />
+          <Form.Item name="model_limits" label="模型限制" extra="留空不限；从渠道模型中选择，也可输入自定义模型名">
+            <Select
+              mode="tags"
+              className="mono"
+              placeholder="留空表示不限制"
+              allowClear
+              tokenSeparators={[',']}
+              options={modelOptions.map((m) => ({ label: m, value: m }))}
+              filterOption={(input, opt) =>
+                String(opt?.value ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+            />
           </Form.Item>
         </Form>
       </Drawer>

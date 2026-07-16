@@ -33,17 +33,36 @@ export default function Settings() {
     }
   }
 
-  const changePwd = async () => {
+  const currentUsername = localStorage.getItem('username') || 'admin'
+
+  useEffect(() => {
+    pwdForm.setFieldsValue({ new_username: currentUsername })
+  }, [pwdForm, currentUsername])
+
+  const changeAccount = async () => {
     const v = await pwdForm.validateFields()
-    await api.changePassword(v.old_password, v.new_password)
-    message.success('密码已修改')
+    const newUsername = (v.new_username || '').trim()
+    const usernameChanged = newUsername && newUsername !== currentUsername
+    if (!usernameChanged && !v.new_password) {
+      message.warning('未做任何修改')
+      return
+    }
+    const r = await api.updateAccount({
+      old_password: v.old_password,
+      new_username: usernameChanged ? newUsername : undefined,
+      new_password: v.new_password || undefined,
+    })
+    if (r.data?.token) localStorage.setItem('token', r.data.token)
+    if (r.data?.username) localStorage.setItem('username', r.data.username)
+    message.success('账户已更新')
     pwdForm.resetFields()
+    pwdForm.setFieldsValue({ new_username: r.data?.username || newUsername || currentUsername })
   }
 
   return (
     <div>
       <h1 className="page-title">设置</h1>
-      <p className="page-desc">系统参数与管理员密码</p>
+      <p className="page-desc">系统参数与管理员账户</p>
 
       <Card title="运行参数" style={{ marginBottom: 16 }}>
         <Form form={form} layout="vertical">
@@ -79,36 +98,49 @@ export default function Settings() {
         </Form>
       </Card>
 
-      <Card title="修改密码">
+      <Card title="修改账户">
         <Form form={pwdForm} layout="vertical">
-          <Form.Item name="old_password" label="当前密码" rules={[{ required: true }]}>
-            <Input.Password />
+          <Form.Item
+            name="new_username"
+            label="用户名"
+            rules={[{ min: 3, message: '至少 3 位' }]}
+          >
+            <Input autoComplete="username" placeholder="用户名" />
+          </Form.Item>
+          <Form.Item
+            name="old_password"
+            label="当前密码"
+            rules={[{ required: true, message: '请输入当前密码以确认修改' }]}
+          >
+            <Input.Password autoComplete="current-password" />
           </Form.Item>
           <Form.Item
             name="new_password"
             label="新密码"
-            rules={[{ required: true, min: 6, message: '至少 6 位' }]}
+            extra="留空表示不修改密码"
+            rules={[{ min: 6, message: '至少 6 位' }]}
           >
-            <Input.Password />
+            <Input.Password autoComplete="new-password" />
           </Form.Item>
           <Form.Item
             name="confirm"
             label="确认新密码"
             dependencies={['new_password']}
             rules={[
-              { required: true },
               ({ getFieldValue }) => ({
                 validator(_, value) {
-                  if (!value || getFieldValue('new_password') === value) return Promise.resolve()
+                  const np = getFieldValue('new_password')
+                  if (!np) return Promise.resolve()
+                  if (value === np) return Promise.resolve()
                   return Promise.reject(new Error('两次输入不一致'))
                 },
               }),
             ]}
           >
-            <Input.Password />
+            <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Button type="primary" onClick={changePwd} icon={<Key size={16} />}>
-            修改密码
+          <Button type="primary" onClick={changeAccount} icon={<Key size={16} />}>
+            保存账户
           </Button>
         </Form>
       </Card>
