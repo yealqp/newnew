@@ -7,6 +7,7 @@ import (
         "io"
         "strconv"
         "strings"
+        "sync"
         "time"
 
         "github.com/gofiber/fiber/v2"
@@ -146,7 +147,7 @@ func (h *Handler) relayNonStream(
                 resp, e := h.openai.ChatCompletions(ctx, ch.BaseURL, apiKey, upstreamBody, false, ch.FullURL)
                 if e != nil {
                         status, errMsg, httpStatus = "error", e.Error(), fiber.StatusBadGateway
-                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, "", requestID)
+                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, 0, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, "", requestID)
                         return c.Status(httpStatus).JSON(errJSON(clientFormat, errMsg))
                 }
                 raw, _ := io.ReadAll(resp.Body)
@@ -154,7 +155,7 @@ func (h *Handler) relayNonStream(
                 respBody = string(raw)
                 if resp.StatusCode >= 400 {
                         status, errMsg, httpStatus = "error", openaiup.PrettyUpstreamError(raw), resp.StatusCode
-                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, respBody, requestID)
+                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, 0, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, respBody, requestID)
                         return c.Status(httpStatus).Type("json").Send(raw)
                 }
                 usage = extractOpenAIUsage(raw)
@@ -163,7 +164,7 @@ func (h *Handler) relayNonStream(
                 resp, e := h.claude.Messages(ctx, ch.BaseURL, apiKey, upstreamBody, false, ch.FullURL)
                 if e != nil {
                         status, errMsg, httpStatus = "error", e.Error(), fiber.StatusBadGateway
-                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, "", requestID)
+                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, 0, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, "", requestID)
                         return c.Status(httpStatus).JSON(errJSON(clientFormat, errMsg))
                 }
                 raw, _ := io.ReadAll(resp.Body)
@@ -171,7 +172,7 @@ func (h *Handler) relayNonStream(
                 respBody = string(raw)
                 if resp.StatusCode >= 400 {
                         status, errMsg, httpStatus = "error", claudeup.PrettyError(raw), resp.StatusCode
-                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, respBody, requestID)
+                        h.writeLog(tok, ch, modelName, upstreamModel, false, start, 0, usage, billing.Result{PriceMissing: !priceFound, Price: price}, status, errMsg, c.IP(), bodyStr, respBody, requestID)
                         return c.Status(httpStatus).Type("json").Send(raw)
                 }
                 usage = extractClaudeUsage(raw)
@@ -182,12 +183,12 @@ func (h *Handler) relayNonStream(
 
         if err != nil {
                 status, errMsg = "error", err.Error()
-                h.writeLog(tok, ch, modelName, upstreamModel, false, start, usage, billing.Calculate(price, priceFound, usage), status, errMsg, c.IP(), bodyStr, respBody, requestID)
+                h.writeLog(tok, ch, modelName, upstreamModel, false, start, 0, usage, billing.Calculate(price, priceFound, usage), status, errMsg, c.IP(), bodyStr, respBody, requestID)
                 return c.Status(fiber.StatusInternalServerError).JSON(errJSON(clientFormat, errMsg))
         }
 
         cost := billing.Calculate(price, priceFound, usage)
-        h.writeLog(tok, ch, modelName, upstreamModel, false, start, usage, cost, status, errMsg, c.IP(), bodyStr, string(clientResp), requestID)
+        h.writeLog(tok, ch, modelName, upstreamModel, false, start, 0, usage, cost, status, errMsg, c.IP(), bodyStr, string(clientResp), requestID)
         c.Set("Content-Type", "application/json")
         return c.Status(httpStatus).Send(clientResp)
 }
@@ -199,10 +200,12 @@ func (h *Handler) relayStream(
 ) error {
         ctx := context.Background()
         var (
-                respBody strings.Builder
-                usage    billing.Usage
-                status   = "success"
-                errMsg   string
+                respBody    strings.Builder
+                usage       billing.Usage
+                status      = "success"
+                errMsg      string
+                firstTokenMs int64
+                firstOnce   sync.Once
         )
 
         c.Set("Content-Type", "text/event-stream")
@@ -244,7 +247,7 @@ func (h *Handler) relayStream(
                                 usage = u
                         }
                         cost := billing.Calculate(price, priceFound, usage)
-                        h.writeLog(tok, ch, modelName, upstreamModel, true, start, usage, cost, status, errMsg, clientIP, reqBody, respBody.String(), requestID)
+                        h.writeLog(tok, ch, modelName, upstreamModel, true, start, firstTokenMs, usage, cost, status, errMsg, clientIP, reqBody, respBody.String(), requestID)
                 }()
 
                 switch ch.Type {
@@ -271,6 +274,7 @@ func (h *Handler) relayStream(
                                 if len(out) == 0 {
                                         return nil
                                 }
+                                firstOnce.Do(func() { firstTokenMs = time.Since(start).Milliseconds() })
                                 respBody.Write(out)
                                 return write(out)
                         })
@@ -297,6 +301,7 @@ func (h *Handler) relayStream(
                                 if len(out) == 0 {
                                         return nil
                                 }
+                                firstOnce.Do(func() { firstTokenMs = time.Since(start).Milliseconds() })
                                 respBody.Write(out)
                                 return write(out)
                         })
@@ -305,7 +310,7 @@ func (h *Handler) relayStream(
         return nil
 }
 
-func (h *Handler) writeLog(tok *model.Token, ch *model.Channel, modelName, upstreamModel string, stream bool, start time.Time, usage billing.Usage, cost billing.Result, status, errMsg, ip, reqBody, respBody, requestID string) {
+func (h *Handler) writeLog(tok *model.Token, ch *model.Channel, modelName, upstreamModel string, stream bool, start time.Time, firstTokenMs int64, usage billing.Usage, cost billing.Result, status, errMsg, ip, reqBody, respBody, requestID string) {
         logsvc.Write(logsvc.WriteInput{
                 RequestID:     requestID,
                 Token:         tok,
@@ -314,6 +319,7 @@ func (h *Handler) writeLog(tok *model.Token, ch *model.Channel, modelName, upstr
                 UpstreamModel: upstreamModel,
                 IsStream:      stream,
                 DurationMs:    time.Since(start).Milliseconds(),
+                FirstTokenMs:  firstTokenMs,
                 Usage:         usage,
                 Cost:          cost,
                 Status:        status,

@@ -12,6 +12,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd'
 import {
@@ -199,6 +200,31 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
   return String(n)
+}
+
+function formatResponseTime(timeMs?: number): string {
+  if (!timeMs) return '未测试'
+  return timeMs < 1000 ? `${Math.round(timeMs)}ms` : `${(timeMs / 1000).toFixed(2)}s`
+}
+
+function responseTimeColor(timeMs?: number): string | undefined {
+  if (!timeMs) return undefined
+  if (timeMs <= 1000) return 'success'
+  if (timeMs <= 2000) return 'warning'
+  return 'error'
+}
+
+function formatRelativeTestTime(timestamp?: number): string {
+  if (!timestamp) return '-'
+  const diffSeconds = timestamp - Date.now() / 1000
+  const absSeconds = Math.abs(diffSeconds)
+  const formatter = new Intl.RelativeTimeFormat('zh-CN', { numeric: 'always', style: 'narrow' })
+  if (absSeconds < 60) return formatter.format(Math.round(diffSeconds), 'second')
+  if (absSeconds < 3600) return formatter.format(Math.round(diffSeconds / 60), 'minute')
+  if (absSeconds < 86400) return formatter.format(Math.round(diffSeconds / 3600), 'hour')
+  if (absSeconds < 2592000) return formatter.format(Math.round(diffSeconds / 86400), 'day')
+  if (absSeconds < 31536000) return formatter.format(Math.round(diffSeconds / 2592000), 'month')
+  return formatter.format(Math.round(diffSeconds / 31536000), 'year')
 }
 
 export default function Channels() {
@@ -517,26 +543,6 @@ export default function Channels() {
       },
     },
     {
-      title: '模型',
-      dataIndex: 'models',
-      render: (v: string) => {
-        const models = v ? v.split(',').map((s) => s.trim()).filter(Boolean) : []
-        if (!models.length) return '-'
-        return (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {models.slice(0, 3).map((m) => (
-              <Tag key={m} className="mono" style={{ fontSize: 11 }}>
-                {m}
-              </Tag>
-            ))}
-            {models.length > 3 && (
-              <Tag style={{ fontSize: 11 }}>+{models.length - 3}</Tag>
-            )}
-          </div>
-        )
-      },
-    },
-    {
       title: '总计 Token',
       dataIndex: 'total_tokens',
       width: 120,
@@ -567,6 +573,33 @@ export default function Channels() {
           </Tag>
         ) : (
           <Tag icon={<X size={12} />}>禁用</Tag>
+        ),
+    },
+    {
+      title: '响应',
+      dataIndex: 'response_time',
+      width: 100,
+      sorter: (a: Channel, b: Channel) => (a.response_time || 0) - (b.response_time || 0),
+      render: (v?: number) => (
+        <Tag color={responseTimeColor(v)} className="mono" style={{ margin: 0 }}>
+          {formatResponseTime(v)}
+        </Tag>
+      ),
+    },
+    {
+      title: '上次测试',
+      dataIndex: 'test_time',
+      width: 110,
+      sorter: (a: Channel, b: Channel) => (a.test_time || 0) - (b.test_time || 0),
+      render: (v?: number) =>
+        v ? (
+          <Tooltip title={new Date(v * 1000).toLocaleString('zh-CN')}>
+            <Tag className="mono" style={{ margin: 0, cursor: 'default' }}>
+              {formatRelativeTestTime(v)}
+            </Tag>
+          </Tooltip>
+        ) : (
+          <span style={{ color: 'var(--text-dim)' }}>-</span>
         ),
     },
     {

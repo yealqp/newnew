@@ -9,3 +9,4 @@ backend/data/
 dist/
 frontend/dist/
 *.exe
+new-api-main

@@ -106,6 +106,7 @@ export interface RequestLog {
   model: string
   upstream_model: string
   is_stream: boolean
+  first_token_ms: number
   duration_ms: number
   prompt_tokens: number
   completion_tokens: number
@@ -164,6 +165,31 @@ export interface DashboardRangeData {
     cost_rmb: number
   }>
   distribution: Array<{
+    channel_name: string
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    cost_rmb: number
+  }>
+  model_stats: Array<{
+    model: string
+    count: number
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    cost_rmb: number
+  }>
+  model_series: Array<{
+    time: string
+    model: string
+    count: number
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    cost_rmb: number
+  }>
+  channel_series: Array<{
+    time: string
     channel_name: string
     prompt_tokens: number
     completion_tokens: number

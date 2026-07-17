@@ -8,6 +8,7 @@ import {
   Settings,
   LogOut,
   Cloud,
+  Sparkles,
 } from 'lucide-react'
 
 const { Sider, Header, Content } = Layout
@@ -18,6 +19,7 @@ export default function AppLayout() {
 
   const selected = useMemo(() => {
     const path = loc.pathname
+    if (path.startsWith('/playground')) return ['/playground']
     if (path.startsWith('/channels')) return ['/channels']
     if (path.startsWith('/tokens')) return ['/tokens']
     if (path.startsWith('/logs')) return ['/logs']
@@ -28,6 +30,7 @@ export default function AppLayout() {
   // Build menu items inside the component so icons render in a valid React tree.
   const items = useMemo(
     () => [
+      { key: '/playground', icon: <Sparkles size={16} />, label: '游乐场' },
       { key: '/', icon: <LayoutDashboard size={16} />, label: '仪表盘' },
       { key: '/channels', icon: <Cloud size={16} />, label: '渠道' },
       { key: '/tokens', icon: <KeyRound size={16} />, label: '令牌' },
@@ -126,7 +129,7 @@ export default function AppLayout() {
           </Space>
         </Header>
         <Content style={{ padding: 24, overflow: 'auto', background: '#1c1b19' }}>
-          <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div style={{ width: '100%', minWidth: 0 }}>
             <Outlet />
           </div>
         </Content>

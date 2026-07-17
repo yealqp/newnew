@@ -15,8 +15,8 @@ import {
 import { Search, Eye } from 'lucide-react'
 import dayjs from 'dayjs'
 import { api, type RequestLog } from '../api/client'
-import MarkdownView from '../components/MarkdownView'
-import { extractLogContent, prettyJson } from '../utils/logContent'
+import MarkdownView, { isRoleLang } from '../components/MarkdownView'
+import { extractLogContent, extractRawRoleBlocks, extractResponseText, prettyJson } from '../utils/logContent'
 
 export default function Logs() {
   const [list, setList] = useState<RequestLog[]>([])
@@ -59,13 +59,6 @@ export default function Logs() {
 
   const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      width: 60,
-      sorter: (a: RequestLog, b: RequestLog) => a.id - b.id,
-      defaultSortOrder: 'ascend' as const,
-    },
-    {
       title: '时间',
       dataIndex: 'created_at',
       width: 170,
@@ -87,12 +80,40 @@ export default function Logs() {
     { title: '令牌', dataIndex: 'token_name' },
     {
       title: 'Token',
-      width: 140,
-      render: (_: unknown, r: RequestLog) => (
-        <span className="mono" style={{ fontSize: 12 }}>
-          {r.prompt_tokens}+{r.completion_tokens}
-        </span>
-      ),
+      width: 190,
+      render: (_: unknown, r: RequestLog) => {
+        const prompt = r.prompt_tokens || 0
+        const completion = r.completion_tokens || 0
+        const cacheRead = r.cache_read_tokens || 0
+        const cacheWrite = r.cache_write_tokens || 0
+        if (!prompt && !completion && !cacheRead && !cacheWrite) {
+          return <span style={{ color: 'var(--text-dim)' }}>-</span>
+        }
+        return (
+          <div className="log-token-cell">
+            <div className="log-token-main mono">
+              <span title="输入 Token">
+                <span className="log-token-label">输入</span>
+                {prompt.toLocaleString()}
+              </span>
+              <span className="log-token-separator">/</span>
+              <span title="输出 Token">
+                <span className="log-token-label">输出</span>
+                {completion.toLocaleString()}
+              </span>
+            </div>
+            <div className="log-token-meta mono">
+              {(cacheRead > 0 || cacheWrite > 0) && (
+                <span>
+                  缓存{cacheRead > 0 ? ` ↓${cacheRead.toLocaleString()}` : ''}
+                  {cacheWrite > 0 ? ` ↑${cacheWrite.toLocaleString()}` : ''}
+                </span>
+              )}
+              <span className="log-token-total">总计 {r.total_tokens.toLocaleString()}</span>
+            </div>
+          </div>
+        )
+      },
     },
     {
       title: '费用',
@@ -102,15 +123,34 @@ export default function Logs() {
     },
     {
       title: '耗时',
-      dataIndex: 'duration_ms',
-      width: 90,
-      render: (v: number) => <span className="mono">{v}ms</span>,
-    },
-    {
-      title: '流式',
-      dataIndex: 'is_stream',
-      width: 70,
-      render: (v: boolean) => (v ? <Tag>stream</Tag> : '-'),
+      width: 150,
+      render: (_: unknown, r: RequestLog) => {
+        const totalSec = r.duration_ms / 1000
+        const speed = r.total_tokens > 0 && totalSec > 0
+          ? Math.round(r.total_tokens / totalSec)
+          : null
+        return (
+          <div className="mono" style={{ fontSize: 11, lineHeight: 1.6 }}>
+            <div style={{ marginBottom: 2 }}>
+              <Tag style={{ margin: 0, padding: '0 6px', fontSize: 10 }}>
+                {r.is_stream ? 'stream' : 'non-stream'}
+              </Tag>
+            </div>
+            <span style={{ color: 'var(--text-dim)' }}>TTFT </span>
+            <span>{r.first_token_ms ? `${r.first_token_ms}ms` : '-'}</span>
+            <br />
+            <span style={{ color: 'var(--text-dim)' }}>Total </span>
+            <span>{r.duration_ms}ms</span>
+            {speed ? (
+              <>
+                <br />
+                <span style={{ color: 'var(--text-dim)' }}>Speed </span>
+                <span style={{ color: 'var(--success)' }}>{speed.toLocaleString()} t/s</span>
+              </>
+            ) : null}
+          </div>
+        )
+      },
     },
     {
       title: '',
@@ -219,7 +259,17 @@ export default function Logs() {
               <Descriptions.Item label="费用">
                 <span className="cost">¥{(detail.cost_rmb || 0).toFixed(6)}</span>
               </Descriptions.Item>
-              <Descriptions.Item label="耗时">{detail.duration_ms} ms</Descriptions.Item>
+              <Descriptions.Item label="耗时">
+                <span className="mono">{detail.duration_ms} ms</span>
+                {detail.is_stream && detail.first_token_ms ? (
+                  <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
+                    TTFT {detail.first_token_ms}ms
+                    {detail.total_tokens > 0
+                      ? ` · ${Math.round(detail.total_tokens / (detail.duration_ms / 1000)).toLocaleString()} t/s`
+                      : ''}
+                  </span>
+                ) : null}
+              </Descriptions.Item>
               <Descriptions.Item label="流式">
                 {detail.is_stream ? <Tag>stream</Tag> : '非流式'}
               </Descriptions.Item>
@@ -232,12 +282,14 @@ export default function Logs() {
 
             <BodyPanel
               title="请求内容"
+              kind="request"
               raw={detail.request_body}
               extracted={reqExtracted}
               stream={detail.is_stream}
             />
             <BodyPanel
               title="响应内容"
+              kind="response"
               raw={detail.response_body}
               extracted={respExtracted}
               stream={detail.is_stream}
@@ -258,11 +310,13 @@ export default function Logs() {
 
 function BodyPanel({
   title,
+  kind,
   raw,
   extracted,
   stream,
 }: {
   title: string
+  kind: 'request' | 'response'
   raw: string
   extracted: ReturnType<typeof extractLogContent>
   stream: boolean
@@ -299,11 +353,8 @@ function BodyPanel({
           {
             key: 'raw',
             label: 'Raw',
-            children: (
-              <pre className="mono log-raw-pre">
-                {extracted.markdown || '(no text content)'}
-              </pre>
-            ),
+            children:
+              kind === 'response' ? <RawResponseView raw={raw} /> : <RawRoleView raw={raw} />,
           },
           {
             key: 'json',
@@ -312,6 +363,38 @@ function BodyPanel({
           },
         ]}
       />
+    </div>
+  )
+}
+
+function RawResponseView({ raw }: { raw: string }) {
+  const text = extractResponseText(raw)
+  return (
+    <pre className="mono log-raw-pre" style={{ fontSize: 15 }}>
+      {text || '(no text content)'}
+    </pre>
+  )
+}
+
+function RawRoleView({ raw }: { raw: string }) {
+  const blocks = extractRawRoleBlocks(raw)
+  if (!blocks) {
+    return (
+      <pre className="mono log-raw-pre" style={{ whiteSpace: 'pre-wrap' }}>
+        {raw || '(no text content)'}
+      </pre>
+    )
+  }
+  return (
+    <div className="md-view" style={{ maxHeight: 420 }}>
+      {blocks.map((b, i) => (
+        <div key={i} className="md-code-block">
+          <div className={`md-code-block-lang${isRoleLang(b.role) ? ' md-code-block-lang-role' : ''}`}>
+            {b.role}
+          </div>
+          <pre className="md-raw-content">{b.content}</pre>
+        </div>
+      ))}
     </div>
   )
 }

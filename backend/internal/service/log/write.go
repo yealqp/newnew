@@ -18,6 +18,7 @@ type WriteInput struct {
         UpstreamModel    string
         IsStream         bool
         DurationMs       int64
+        FirstTokenMs     int64
         Usage            billing.Usage
         Cost             billing.Result
         Status           string
@@ -54,6 +55,7 @@ func Write(in WriteInput) {
                 UpstreamModel:    in.UpstreamModel,
                 IsStream:         in.IsStream,
                 DurationMs:       in.DurationMs,
+                FirstTokenMs:     in.FirstTokenMs,
                 PromptTokens:     in.Usage.PromptTokens,
                 CompletionTokens: in.Usage.CompletionTokens,
                 CacheReadTokens:  in.Usage.CacheReadTokens,

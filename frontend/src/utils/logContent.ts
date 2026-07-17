@@ -164,7 +164,7 @@ function extractRequestJSON(obj: any): ExtractedContent {
     const parts: string[] = []
     if (obj.model) parts.push(`> model: \`${obj.model}\`${obj.stream ? ' · stream' : ''}`)
     for (const m of obj.messages) {
-      const role = m.role || 'unknown'
+      const role = (m.role || 'unknown').toUpperCase()
       const body = contentToMarkdown(m.content)
       const extra: string[] = []
       if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
@@ -177,7 +177,9 @@ function extractRequestJSON(obj: any): ExtractedContent {
       if (m.tool_call_id) {
         extra.push(`tool_call_id: \`${m.tool_call_id}\``)
       }
-      parts.push(`### ${role}\n\n${body || '*(empty)*'}${extra.length ? '\n\n' + extra.join('\n\n') : ''}`)
+      const content = body || '*(empty)*'
+      const extras = extra.length ? '\n\n' + extra.join('\n\n') : ''
+      parts.push(`\`\`\`${role}\n${content}\n\`\`\`${extras}`)
     }
     return { markdown: parts.join('\n\n'), format: 'openai', hasContent: true }
   }
@@ -187,11 +189,12 @@ function extractRequestJSON(obj: any): ExtractedContent {
     const parts: string[] = []
     if (obj.model) parts.push(`> model: \`${obj.model}\`${obj.stream ? ' · stream' : ''}`)
     const sys = contentToMarkdown(obj.system)
-    if (sys) parts.push(`### system\n\n${sys}`)
+    if (sys) parts.push(`\`\`\`SYSTEM\n${sys}\n\`\`\``)
     if (Array.isArray(obj.messages)) {
       for (const m of obj.messages) {
-        const role = m.role || 'unknown'
-        parts.push(`### ${role}\n\n${contentToMarkdown(m.content) || '*(empty)*'}`)
+        const role = (m.role || 'unknown').toUpperCase()
+        const body = contentToMarkdown(m.content) || '*(empty)*'
+        parts.push(`\`\`\`${role}\n${body}\n\`\`\``)
       }
     }
     if (parts.length) {
@@ -216,6 +219,7 @@ function extractResponseJSON(obj: any): ExtractedContent {
       const msg = c.message || c.delta || {}
       const role = msg.role || 'assistant'
       const body = contentToMarkdown(msg.content)
+      const reasoning = contentToMarkdown(msg.reasoning_content)
       const extras: string[] = []
       if (Array.isArray(msg.tool_calls)) {
         for (const tc of msg.tool_calls) {
@@ -224,9 +228,15 @@ function extractResponseJSON(obj: any): ExtractedContent {
           extras.push(`**tool_call** \`${name}\`\n\`\`\`json\n${tryPretty(args)}\n\`\`\``)
         }
       }
+      if (reasoning) {
+        extras.unshift(`#### 思考过程\n\n${reasoning}`)
+      }
       if (c.finish_reason) extras.push(`finish_reason: \`${c.finish_reason}\``)
+      const usage = formatOpenAIUsage(obj.usage)
+      if (usage && i === 0) extras.push(usage)
       const title = obj.choices.length > 1 ? `### ${role} #${i}` : `### ${role}`
-      parts.push(`${title}\n\n${body || '*(empty)*'}${extras.length ? '\n\n' + extras.join('\n\n') : ''}`)
+      const visible = body || (reasoning ? '*（无最终回复内容）*' : '*(empty)*')
+      parts.push(`${title}\n\n${visible}${extras.length ? '\n\n' + extras.join('\n\n') : ''}`)
     }
     return { markdown: parts.join('\n\n'), format: 'openai', hasContent: true }
   }
@@ -260,6 +270,25 @@ function extractResponseJSON(obj: any): ExtractedContent {
     format: 'text',
     hasContent: true,
   }
+}
+
+function formatOpenAIUsage(usage: any): string {
+  if (!usage) return ''
+  const prompt = usage.prompt_tokens
+  const completion = usage.completion_tokens
+  const total = usage.total_tokens ?? ((prompt || 0) + (completion || 0))
+  const cached = usage.prompt_tokens_details?.cached_tokens
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens
+  const text = usage.completion_tokens_details?.text_tokens
+  const segments = [
+    prompt != null ? `输入 \`${Number(prompt).toLocaleString()}\`` : '',
+    completion != null ? `输出 \`${Number(completion).toLocaleString()}\`` : '',
+    total != null ? `总计 \`${Number(total).toLocaleString()}\`` : '',
+    cached != null ? `缓存读取 \`${Number(cached).toLocaleString()}\`` : '',
+    reasoning != null ? `推理 \`${Number(reasoning).toLocaleString()}\`` : '',
+    text != null ? `文本 \`${Number(text).toLocaleString()}\`` : '',
+  ].filter(Boolean)
+  return segments.length ? `> Token：${segments.join(' · ')}` : ''
 }
 
 function contentToMarkdown(content: unknown): string {
@@ -348,4 +377,132 @@ export function prettyJson(raw: string | undefined | null): string {
 
   // Fallback: return raw text
   return s
+}
+
+/**
+ * Parse a request/response body into per-role plain-text blocks for the Raw tab.
+ * Each block has an uppercase role and the raw (non-markdown) content.
+ * Returns null if the body cannot be parsed into role blocks.
+ */
+export type RawRoleBlock = { role: string; content: string }
+
+export function extractRawRoleBlocks(raw: string | undefined | null): RawRoleBlock[] | null {
+  if (!raw || !raw.trim()) return null
+  let obj: any
+  try { obj = JSON.parse(raw.trim()) } catch { return null }
+
+  const blocks: RawRoleBlock[] = []
+  if (obj.system != null) {
+    const s = rawText(obj.system)
+    if (s) blocks.push({ role: 'SYSTEM', content: s })
+  }
+  if (Array.isArray(obj.messages)) {
+    for (const m of obj.messages) {
+      const role = (m.role || 'unknown').toUpperCase()
+      let content = rawText(m.content)
+      const extras: string[] = []
+      if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
+        for (const tc of m.tool_calls) extras.push(JSON.stringify(tc, null, 2))
+      }
+      if (m.tool_call_id) extras.push(`tool_call_id: ${m.tool_call_id}`)
+      if (extras.length) {
+        content = content ? `${content}\n\n${extras.join('\n\n')}` : extras.join('\n\n')
+      }
+      blocks.push({ role, content: content || '(empty)' })
+    }
+  }
+  if (blocks.length === 0) return null
+  return blocks
+}
+
+function rawText(content: unknown): string {
+  if (content == null) return ''
+  if (typeof content === 'string') return content
+  return JSON.stringify(content, null, 2)
+}
+
+/**
+ * Extract the plain concatenated text returned in a response body.
+ * SSE streams: concatenate content deltas. JSON: extract assistant text.
+ * Falls back to the raw string when not parseable.
+ */
+export function extractResponseText(raw: string | undefined | null): string {
+  if (!raw || !raw.trim()) return ''
+  const s = raw.trim()
+
+  if (looksLikeSSE(s)) {
+    return extractStreamText(s)
+  }
+
+  try {
+    return extractResponseJSONText(JSON.parse(s))
+  } catch {
+    return s
+  }
+}
+
+function extractStreamText(s: string): string {
+  let text = ''
+  let reasoning = ''
+  for (const line of s.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const data = trimmed.slice(5).trim()
+    if (!data || data === '[DONE]') continue
+    let obj: any
+    try { obj = JSON.parse(data) } catch { continue }
+
+    if (obj.object === 'chat.completion.chunk' || Array.isArray(obj.choices)) {
+      const delta = obj.choices?.[0]?.delta
+      if (delta && typeof delta.reasoning_content === 'string') reasoning += delta.reasoning_content
+      if (delta && typeof delta.content === 'string') text += delta.content
+      continue
+    }
+    const typ = obj.type || ''
+    if (typ === 'content_block_delta') {
+      const d = obj.delta || {}
+      if (d.type === 'text_delta' && typeof d.text === 'string') text += d.text
+    } else if (typ === 'content_block_start') {
+      const cb = obj.content_block || {}
+      if (cb.type === 'text' && typeof cb.text === 'string') text += cb.text
+    }
+  }
+  return text || reasoning
+}
+
+function extractResponseJSONText(obj: any): string {
+  if (Array.isArray(obj.choices)) {
+    const parts: string[] = []
+    for (const c of obj.choices) {
+      const msg = c.message || c.delta || {}
+      const t = plainContentText(msg.content)
+      const reasoning = plainContentText(msg.reasoning_content)
+      if (t) parts.push(t)
+      else if (reasoning) parts.push(reasoning)
+    }
+    return parts.join('\n\n')
+  }
+  if (obj.type === 'message' || Array.isArray(obj.content)) {
+    return plainContentText(obj.content)
+  }
+  if (obj.error) {
+    return typeof obj.error === 'string'
+      ? obj.error
+      : obj.error.message || JSON.stringify(obj.error, null, 2)
+  }
+  return ''
+}
+
+function plainContentText(content: unknown): string {
+  if (content == null) return ''
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    const parts: string[] = []
+    for (const p of content) {
+      if (typeof p === 'string') { parts.push(p); continue }
+      if (p && typeof p === 'object' && typeof p.text === 'string') parts.push(p.text)
+    }
+    return parts.join('\n\n')
+  }
+  return ''
 }

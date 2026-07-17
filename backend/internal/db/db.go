@@ -36,6 +36,8 @@ func Init(cfg *config.Config) error {
                 &model.Channel{},
                 &model.RequestLog{},
                 &model.Setting{},
+                &model.Conversation{},
+                &model.ConversationMessage{},
         ); err != nil {
                 return fmt.Errorf("migrate: %w", err)
         }

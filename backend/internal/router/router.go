@@ -44,6 +44,15 @@ func Setup(app *fiber.App) {
         auth.Get("/settings", admin.GetSettings)
         auth.Put("/settings", admin.UpdateSettings)
 
+        // Playground
+        auth.Get("/playground/conversations", admin.ListConversations)
+        auth.Post("/playground/conversations", admin.CreateConversation)
+        auth.Put("/playground/conversations/:id", admin.UpdateConversation)
+        auth.Delete("/playground/conversations/:id", admin.DeleteConversation)
+        auth.Get("/playground/conversations/:id/messages", admin.ListMessages)
+        auth.Delete("/playground/conversations/:id/messages", admin.ClearMessages)
+        auth.Post("/playground/chat", admin.PlaygroundChat)
+
         // Relay API
         h := relay.NewHandler()
         v1 := app.Group("/v1", middleware.TokenAuth())

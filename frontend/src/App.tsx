@@ -8,6 +8,7 @@ import Channels from './pages/Channels'
 import Tokens from './pages/Tokens'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
+import Playground from './pages/Playground'
 
 function RequireAuth() {
   const token = localStorage.getItem('token')
@@ -119,6 +120,7 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route element={<AppLayout />}>
               <Route index element={<Dashboard />} />
+              <Route path="playground" element={<Playground />} />
               <Route path="channels" element={<Channels />} />
               <Route path="tokens" element={<Tokens />} />
               <Route path="logs" element={<Logs />} />

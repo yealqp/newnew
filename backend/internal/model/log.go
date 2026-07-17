@@ -13,6 +13,7 @@ type RequestLog struct {
         Model             string    `json:"model" gorm:"size:128;index"`
         UpstreamModel     string    `json:"upstream_model" gorm:"size:128"`
         IsStream          bool      `json:"is_stream"`
+        FirstTokenMs      int64     `json:"first_token_ms" gorm:"default:0"`
         DurationMs        int64     `json:"duration_ms"`
         PromptTokens      int       `json:"prompt_tokens"`
         CompletionTokens  int       `json:"completion_tokens"`
