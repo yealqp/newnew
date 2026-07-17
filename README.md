@@ -6,9 +6,11 @@
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Go · Fiber · GORM · SQLite |
+| 后端 | Rust · axum · sqlx · SQLite（`backend-rust/`，由原 Go 版重写） |
 | 前端 | React · TypeScript · Vite · Ant Design |
 | 部署 | 本地直接运行（无 Docker） |
+
+> 原 Go（Fiber · GORM）实现保留在 `backend/`，API 与数据库 schema 与 Rust 版完全兼容，两者可指向同一个 `gateway.db` 互换运行。
 
 ## 功能
 
@@ -21,19 +23,23 @@
 
 ## 快速开始
 
-### 1. 后端
+### 1. 后端（Rust）
 
 ```bash
-cd backend
+cd backend-rust
 cp .env.example .env   # 可改 ADMIN_PASSWORD / JWT_SECRET
-go run ./cmd/server
-# 或: go build -o bin/gateway.exe ./cmd/server && ./bin/gateway.exe
+cargo run
+# 或: cargo build --release && ./target/release/gateway.exe
 ```
 
 默认：
 
 - 地址：`http://127.0.0.1:3000`
 - 管理员：`admin` / `admin123`（首次启动会打印）
+
+> 沿用旧 Go 版数据：把 `.env` 里的 `DB_PATH` 指向原来的 `backend/data/gateway.db` 即可，表结构与密码哈希完全兼容。
+>
+> 旧 Go 版启动方式：`cd backend && go run ./cmd/server`。
 
 ### 2. 前端
 
@@ -104,7 +110,7 @@ cost_rmb = (non_cached_input * input
 
 ## 环境变量
 
-见 [backend/.env.example](backend/.env.example)：
+见 [backend-rust/.env.example](backend-rust/.env.example)：
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
@@ -117,7 +123,8 @@ cost_rmb = (non_cached_input * input
 ## 目录
 
 ```
-backend/          Go Fiber 服务
+backend-rust/     Rust axum 服务（当前后端）
+backend/          Go Fiber 服务（原实现，保留作参照）
 frontend/         React 管理台
 ```
 

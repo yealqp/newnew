@@ -315,10 +315,16 @@ export default function Playground() {
     abortRef.current?.abort(); abortRef.current = null
     if (streamingContent) {
       setMessages((prev) => [...prev, { role: 'assistant', content: streamingContent }])
+      // 中止时也持久化已生成的部分
+      if (activeId) {
+        apiPost(`/api/admin/playground/conversations/${activeId}/messages`, {
+          role: 'assistant', content: streamingContent,
+        }).then(loadConversations).catch(() => {})
+      }
       setStreamingContent('')
     }
     setLoading(false)
-  }, [streamingContent])
+  }, [streamingContent, activeId, loadConversations])
 
   const send = useCallback(async (overrides?: { msg?: string; msgs?: ChatMsg[] }) => {
     const text = overrides?.msg ?? input.trim()
@@ -339,19 +345,28 @@ export default function Playground() {
     abortRef.current = controller
 
     try {
-      const res = await fetch('/api/admin/playground/chat', {
+      // 先落库用户消息（服务端会自动改标题、刷新会话时间）
+      await apiPost(`/api/admin/playground/conversations/${activeId}/messages`, {
+        role: 'user', content: text,
+      }).catch(() => {})
+
+      // 直接请求网关自己的 OpenAI 兼容中继接口：渠道选择与 OpenAI/Claude
+      // 格式转换全部由后端中继层完成，任意类型上游都可用
+      const res = await fetch('/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN()}` },
         body: JSON.stringify({
-          conversation_id: activeId, model,
+          model,
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+          stream: true,
           temperature: 0.7,
         }),
         signal: controller.signal,
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: res.statusText }))
-        setMessages((prev) => [...prev, { role: 'assistant', content: `**Error:** ${err.message || '请求失败'}` }])
+        const msg = err.error?.message || err.message || '请求失败'
+        setMessages((prev) => [...prev, { role: 'assistant', content: `**Error:** ${msg}` }])
         setLoading(false); loadConversations(); return
       }
       const reader = res.body?.getReader()
@@ -377,6 +392,11 @@ export default function Playground() {
       }
       setMessages((prev) => [...prev, { role: 'assistant', content: fullContent }])
       setStreamingContent('')
+      if (fullContent) {
+        await apiPost(`/api/admin/playground/conversations/${activeId}/messages`, {
+          role: 'assistant', content: fullContent,
+        }).catch(() => {})
+      }
     } catch (err: any) {
       if (err.name === 'AbortError') return
       setMessages((prev) => [...prev, { role: 'assistant', content: `**Error:** ${err.message || '网络错误'}` }])

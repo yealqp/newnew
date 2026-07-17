@@ -10,3 +10,5 @@ dist/
 frontend/dist/
 *.exe
 new-api-main
+backend-rust/target/
+backend-rust/data/
