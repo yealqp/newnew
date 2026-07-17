@@ -8,6 +8,7 @@ import (
 
 type Channel struct {
         ID           uint      `json:"id" gorm:"primaryKey"`
+        Icon         string    `json:"icon" gorm:"size:64;default:''"`
         Name         string    `json:"name" gorm:"size:128;not null"`
         Type         string    `json:"type" gorm:"size:32;not null"` // openai | claude
         BaseURL      string    `json:"base_url" gorm:"size:512;not null"`

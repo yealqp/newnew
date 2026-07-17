@@ -26,6 +26,8 @@ import {
 } from 'lucide-react'
 import { OpenAI, Anthropic } from '@lobehub/icons'
 import { api, type Channel, type ModelPrice } from '../api/client'
+import IconPicker from '../components/IconPicker'
+import { LobeIcon } from '../utils/lobeIcons'
 
 type PricingMap = Record<string, ModelPrice>
 
@@ -495,6 +497,7 @@ export default function Channels() {
       dataIndex: 'name',
       render: (v: string, r: Channel) => (
         <Space>
+          <LobeIcon id={r.icon} size={16} />
           <span style={{ fontWeight: 600 }}>{v}</span>
           {r.remark ? <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>{r.remark}</span> : null}
         </Space>
@@ -641,9 +644,14 @@ export default function Channels() {
         }
       >
         <Form form={form} layout="vertical" requiredMark="optional">
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input placeholder="例如 DeepSeek 官方" />
-          </Form.Item>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} style={{ flex: 1, marginBottom: 0 }}>
+              <Input placeholder="例如 DeepSeek 官方" />
+            </Form.Item>
+            <Form.Item name="icon" label="图标" style={{ marginBottom: 0 }}>
+              <IconPicker />
+            </Form.Item>
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Form.Item name="type" label="上游格式" rules={[{ required: true }]}>

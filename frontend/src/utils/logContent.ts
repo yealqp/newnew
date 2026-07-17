@@ -312,11 +312,40 @@ function tryPretty(s: unknown): string {
   }
 }
 
-export function prettyRaw(s: string): string {
-  if (!s) return '-'
+/**
+ * Pretty-print JSON from a stored body, handling both single JSON objects
+ * and SSE streams with multiple data: JSON payloads.
+ */
+export function prettyJson(raw: string | undefined | null): string {
+  if (!raw || !raw.trim()) return '-'
+  const s = raw.trim()
+
+  // Single valid JSON -> pretty-print
   try {
     return JSON.stringify(JSON.parse(s), null, 2)
   } catch {
-    return s
+    // not a single JSON — try SSE
   }
+
+  // SSE dump: parse each data: line individually
+  if (looksLikeSSE(s)) {
+    const lines = s.split(/\r?\n/)
+    const parts: string[] = []
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim()
+        if (!data || data === '[DONE]') continue
+        try {
+          parts.push(JSON.stringify(JSON.parse(data), null, 2))
+        } catch {
+          parts.push(data)
+        }
+      }
+    }
+    if (parts.length) return parts.join('\n\n---\n\n')
+  }
+
+  // Fallback: return raw text
+  return s
 }

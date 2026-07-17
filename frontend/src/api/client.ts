@@ -60,6 +60,7 @@ export default client
 
 export interface Channel {
   id: number
+  icon: string
   name: string
   type: 'openai' | 'claude'
   base_url: string

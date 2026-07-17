@@ -16,7 +16,7 @@ import { Search, Eye } from 'lucide-react'
 import dayjs from 'dayjs'
 import { api, type RequestLog } from '../api/client'
 import MarkdownView from '../components/MarkdownView'
-import { extractLogContent, prettyRaw } from '../utils/logContent'
+import { extractLogContent, prettyJson } from '../utils/logContent'
 
 export default function Logs() {
   const [list, setList] = useState<RequestLog[]>([])
@@ -246,7 +246,7 @@ export default function Logs() {
             {detail.detail ? (
               <div>
                 <Typography.Text type="secondary">Detail</Typography.Text>
-                <pre className="mono log-raw-pre">{prettyRaw(detail.detail)}</pre>
+                <pre className="mono log-raw-pre">{prettyJson(detail.detail)}</pre>
               </div>
             ) : null}
           </Space>
@@ -291,15 +291,24 @@ function BodyPanel({
             children: (
               <MarkdownView
                 content={extracted.markdown}
-                emptyText="无法解析为可读内容，请查看「原始」标签"
+                emptyText="无法解析为可读内容，请查看 Raw 或 Json 标签"
                 maxHeight={420}
               />
             ),
           },
           {
             key: 'raw',
-            label: '原始',
-            children: <pre className="mono log-raw-pre">{prettyRaw(raw || '')}</pre>,
+            label: 'Raw',
+            children: (
+              <pre className="mono log-raw-pre">
+                {extracted.markdown || '(no text content)'}
+              </pre>
+            ),
+          },
+          {
+            key: 'json',
+            label: 'Json',
+            children: <pre className="mono log-raw-pre">{prettyJson(raw)}</pre>,
           },
         ]}
       />

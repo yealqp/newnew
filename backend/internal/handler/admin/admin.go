@@ -220,6 +220,7 @@ func UpdateChannel(c *fiber.Ctx) error {
         ch.Priority = req.Priority
         ch.Pricing = req.Pricing
         ch.Remark = req.Remark
+        ch.Icon = req.Icon
         if err := db.DB.Save(&ch).Error; err != nil {
                 return c.Status(500).JSON(fail(err.Error()))
         }
@@ -599,6 +600,7 @@ func channelView(ch model.Channel, fullKey bool, usage channelUsage) fiber.Map {
                 "priority":          ch.Priority,
                 "pricing":           ch.Pricing,
                 "remark":            ch.Remark,
+                "icon":              ch.Icon,
                 "response_time":     ch.ResponseTime,
                 "test_time":         ch.TestTime,
                 "created_at":        ch.CreatedAt,
