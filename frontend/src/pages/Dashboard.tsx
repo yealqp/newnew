@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Card, Col, Row, Spin, Statistic, DatePicker, Segmented } from 'antd'
 import {
   Bar,
@@ -19,6 +19,7 @@ import {
 } from 'recharts'
 import dayjs, { Dayjs } from 'dayjs'
 import { api, type DashboardRangeData } from '../api/client'
+import { formatTokenCount, formatCostRMB } from '../utils/format'
 
 const { RangePicker } = DatePicker
 
@@ -29,16 +30,6 @@ const GRANULARITY_OPTIONS = [
   { label: '天', value: 'day' },
   { label: '周', value: 'week' },
 ]
-
-function fmtNum(n: number) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
-
-function fmtRMB(n: number) {
-  return '¥' + (n || 0).toFixed(4)
-}
 
 type ModelTab = 'trend' | 'proportion' | 'top'
 type DistDimension = 'model' | 'channel'
@@ -202,7 +193,32 @@ export default function Dashboard() {
   }
 
   const distTotalLabel =
-    distMetric === 'token' ? fmtNum(distTotal) + ' tokens' : fmtRMB(distTotal)
+    distMetric === 'token' ? formatTokenCount(distTotal) + ' tokens' : formatCostRMB(distTotal, 4)
+
+  const distChartAxes = (): ReactNode[] => [
+    <CartesianGrid key="grid" strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />,
+    <XAxis
+      key="x"
+      dataKey="time"
+      stroke="#8a8680"
+      fontSize={12}
+      tickFormatter={(v) => dayjs(v).format(timeFmt)}
+    />,
+    <YAxis key="y" stroke="#8a8680" fontSize={12} />,
+    <Tooltip
+      key="tooltip"
+      contentStyle={TOOLTIP_STYLE}
+      labelStyle={{ color: '#f5f3ee' }}
+      labelFormatter={(v) => timeLabelFormatter(v, granularity)}
+      formatter={(value: any, name: any) => [
+        distMetric === 'token'
+          ? `${Number(value).toLocaleString()} tokens`
+          : formatCostRMB(Number(value), 4),
+        String(name ?? ''),
+      ]}
+    />,
+    <Legend key="legend" formatter={(v: any) => shortLabel(String(v ?? ''))} />,
+  ]
 
   return (
     <div>
@@ -238,13 +254,13 @@ export default function Dashboard() {
         </Col>
         <Col xs={24} sm={12} lg={{ flex: 1 }}>
           <Card>
-            <Statistic title="总 Token" value={fmtNum(data?.total_tokens || 0)} />
+            <Statistic title="总 Token" value={formatTokenCount(data?.total_tokens || 0)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={{ flex: 1 }}>
           <Card>
             <div className="stat-label">费用</div>
-            <div className="stat-value cost">{fmtRMB(data?.cost_rmb || 0)}</div>
+            <div className="stat-value cost">{formatCostRMB(data?.cost_rmb || 0, 4)}</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={{ flex: 1 }}>
@@ -304,26 +320,7 @@ export default function Dashboard() {
             <ResponsiveContainer>
               {distChartType === 'area' ? (
                 <AreaChart data={distAreaData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                  <XAxis
-                    dataKey="time"
-                    stroke="#8a8680"
-                    fontSize={12}
-                    tickFormatter={(v) => dayjs(v).format(timeFmt)}
-                  />
-                  <YAxis stroke="#8a8680" fontSize={12} />
-                  <Tooltip
-                    contentStyle={TOOLTIP_STYLE}
-                    labelStyle={{ color: '#f5f3ee' }}
-                    labelFormatter={(v) => timeLabelFormatter(v, granularity)}
-                    formatter={(value: any, name: any) => [
-                      distMetric === 'token'
-                        ? `${Number(value).toLocaleString()} tokens`
-                        : fmtRMB(Number(value)),
-                      String(name ?? ''),
-                    ]}
-                  />
-                  <Legend formatter={(v: any) => shortLabel(String(v ?? ''))} />
+                  {distChartAxes()}
                   {distKeys.map((k, i) => (
                     <Area
                       key={k}
@@ -339,26 +336,7 @@ export default function Dashboard() {
                 </AreaChart>
               ) : (
                 <BarChart data={distAreaData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                  <XAxis
-                    dataKey="time"
-                    stroke="#8a8680"
-                    fontSize={12}
-                    tickFormatter={(v) => dayjs(v).format(timeFmt)}
-                  />
-                  <YAxis stroke="#8a8680" fontSize={12} />
-                  <Tooltip
-                    contentStyle={TOOLTIP_STYLE}
-                    labelStyle={{ color: '#f5f3ee' }}
-                    labelFormatter={(v) => timeLabelFormatter(v, granularity)}
-                    formatter={(value: any, name: any) => [
-                      distMetric === 'token'
-                        ? `${Number(value).toLocaleString()} tokens`
-                        : fmtRMB(Number(value)),
-                      String(name ?? ''),
-                    ]}
-                  />
-                  <Legend formatter={(v: any) => shortLabel(String(v ?? ''))} />
+                  {distChartAxes()}
                   {distKeys.map((k, i) => (
                     <Bar key={k} dataKey={k} stackId="1" fill={colorOf(i)} />
                   ))}

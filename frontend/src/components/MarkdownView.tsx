@@ -23,6 +23,25 @@ export function isRoleLang(lang: string): boolean {
   return ROLE_LANGS.has(lang.toUpperCase())
 }
 
+export function RoleCodeBlock({
+  role,
+  active,
+  children,
+}: {
+  role: string
+  active?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className="md-code-block">
+      <div className={'md-code-block-lang md-code-block-lang-role' + (active ? ' md-code-block-lang-role-active' : '')}>
+        {role}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 function nodeToText(node: any): string {
   if (node == null) return ''
   if (typeof node === 'string') return node
@@ -44,12 +63,11 @@ function PreBlock({ children, ...props }: any) {
   if (ROLE_LANGS.has(upper)) {
     const text = nodeToText(child?.props?.children)
     return (
-      <div className="md-code-block">
-        <div className="md-code-block-lang md-code-block-lang-role">{upper}</div>
+      <RoleCodeBlock role={upper}>
         <div className="md-code-block-body">
           <MarkdownView content={text} bare emptyText="*(empty)*" />
         </div>
-      </div>
+      </RoleCodeBlock>
     )
   }
   return (

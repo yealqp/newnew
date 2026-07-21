@@ -15,13 +15,13 @@ import {
   Check,
 } from 'lucide-react'
 import MarkdownView from '../components/MarkdownView'
+import { api, type Conversation } from '../api/client'
+import { getToken } from '../utils/auth'
+import { uniqueModelsFromChannels } from '../utils/models'
+import { filterOptionBySearch } from '../utils/format'
+import { iterateSSEData } from '../utils/logContent'
 
 // ---- Types ----
-
-interface Conversation {
-  id: number; title: string; model: string; message_count: number
-  created_at: string; updated_at: string
-}
 
 interface ChatMsg {
   role: 'user' | 'assistant'; content: string; id?: number
@@ -50,26 +50,6 @@ function parseThink(content: string): ThinkParse {
     pos = close + 8
   }
   return { visible: parts.join('').trim(), reasoning: thinks.join('\n\n').trim(), unclosed: false }
-}
-
-const TOKEN = () => localStorage.getItem('token')
-
-async function apiGet<T>(path: string): Promise<T> {
-  const r = await fetch(path, { headers: { Authorization: `Bearer ${TOKEN()}` } })
-  const d = await r.json()
-  return d.data ?? d
-}
-async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const r = await fetch(path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN()}` },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  const d = await r.json()
-  if (!r.ok) throw new Error(d.message || 'request failed')
-  return d.data ?? d
-}
-async function apiDelete(path: string): Promise<void> {
-  await fetch(path, { method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN()}` } })
 }
 
 // ---- Message Component ----
@@ -219,22 +199,18 @@ function PlayMsg({
         {isStreaming && <span style={{ color: 'var(--primary)' }}>生成中…</span>}
         {!editing && (
           <>
-            <button type="button" onClick={handleCopy} title="复制"
-              style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 2, display: 'flex' }}>
+            <button type="button" onClick={handleCopy} title="复制" className="icon-btn">
               {copied ? <Check size={12} /> : <Copy size={12} />}
             </button>
             {isAssistant && onRegenerate && (
-              <button type="button" onClick={onRegenerate} title="重新生成"
-                style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 2, display: 'flex' }}>
+              <button type="button" onClick={onRegenerate} title="重新生成" className="icon-btn">
                 <RefreshCw size={12} />
               </button>
             )}
-            <button type="button" onClick={() => { setEditText(msg.content); setEditing(true) }} title="编辑"
-              style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 2, display: 'flex' }}>
+            <button type="button" onClick={() => { setEditText(msg.content); setEditing(true) }} title="编辑" className="icon-btn">
               <Edit size={12} />
             </button>
-            <button type="button" onClick={onDelete} title="删除"
-              style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 2, display: 'flex' }}>
+            <button type="button" onClick={onDelete} title="删除" className="icon-btn">
               <Trash2 size={12} />
             </button>
           </>
@@ -262,21 +238,13 @@ export default function Playground() {
 
   // Load models from channels
   useEffect(() => {
-    fetch('/api/admin/channels', { headers: { Authorization: `Bearer ${TOKEN()}` } })
-      .then((r) => r.json()).then((d) => {
-        const data = d.data || []
-        const set = new Set<string>()
-        for (const ch of data) {
-          for (const m of (ch.models || '').split(',').map((s: string) => s.trim()).filter(Boolean)) {
-            set.add(m)
-          }
-        }
-        setModels(Array.from(set).sort())
-      }).catch(() => {})
+    api.listChannels().then((r) => setModels(uniqueModelsFromChannels(r.data || []))).catch(() => {})
   }, [])
 
   const loadConversations = useCallback(async () => {
-    try { setConversations((await apiGet<Conversation[]>('/api/admin/playground/conversations')) || [])
+    try {
+      const r = await api.listConversations()
+      setConversations(r.data || [])
     } catch { /* ignore */ }
   }, [])
   useEffect(() => { loadConversations() }, [loadConversations])
@@ -285,8 +253,9 @@ export default function Playground() {
   useEffect(() => {
     if (!activeId) { setMessages([]); return }
     setStreamingContent('')
-    apiGet<ChatMsg[]>(`/api/admin/playground/conversations/${activeId}/messages`)
-      .then((list) => setMessages(list || [])).catch(() => setMessages([]))
+    api.listConversationMessages(activeId)
+      .then((r) => setMessages((r.data || []).map((m) => ({ role: m.role as ChatMsg['role'], content: m.content, id: m.id }))))
+      .catch(() => setMessages([]))
   }, [activeId])
 
   const activeConv = conversations.find((c) => c.id === activeId)
@@ -297,16 +266,17 @@ export default function Playground() {
   useEffect(() => { scrollBottom() }, [messages, streamingContent])
 
   const createConversation = async () => {
-    const conv = await apiPost<Conversation>('/api/admin/playground/conversations', {
+    const r = await api.createConversation({
       title: '新对话', model: model || models[0] || '',
     })
+    const conv = r.data
     setConversations((prev) => [conv, ...prev])
     setActiveId(conv.id); setMessages([]); setStreamingContent('')
   }
 
   const deleteConversation = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation()
-    await apiDelete(`/api/admin/playground/conversations/${id}`)
+    await api.deleteConversation(id)
     setConversations((prev) => prev.filter((c) => c.id !== id))
     if (activeId === id) setActiveId(null)
   }
@@ -317,7 +287,7 @@ export default function Playground() {
       setMessages((prev) => [...prev, { role: 'assistant', content: streamingContent }])
       // 中止时也持久化已生成的部分
       if (activeId) {
-        apiPost(`/api/admin/playground/conversations/${activeId}/messages`, {
+        api.addConversationMessage(activeId, {
           role: 'assistant', content: streamingContent,
         }).then(loadConversations).catch(() => {})
       }
@@ -346,7 +316,7 @@ export default function Playground() {
 
     try {
       // 先落库用户消息（服务端会自动改标题、刷新会话时间）
-      await apiPost(`/api/admin/playground/conversations/${activeId}/messages`, {
+      await api.addConversationMessage(activeId, {
         role: 'user', content: text,
       }).catch(() => {})
 
@@ -354,7 +324,7 @@ export default function Playground() {
       // 格式转换全部由后端中继层完成，任意类型上游都可用
       const res = await fetch('/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN()}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({
           model,
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
@@ -379,11 +349,7 @@ export default function Playground() {
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
-        for (const line of lines) {
-          const t = line.trim()
-          if (!t.startsWith('data:')) continue
-          const d = t.slice(5).trim()
-          if (!d || d === '[DONE]') continue
+        for (const d of iterateSSEData(lines.join('\n'))) {
           try {
             const p = JSON.parse(d); const delta = p.choices?.[0]?.delta?.content || ''
             if (delta) { fullContent += delta; setStreamingContent(fullContent) }
@@ -393,7 +359,7 @@ export default function Playground() {
       setMessages((prev) => [...prev, { role: 'assistant', content: fullContent }])
       setStreamingContent('')
       if (fullContent) {
-        await apiPost(`/api/admin/playground/conversations/${activeId}/messages`, {
+        await api.addConversationMessage(activeId, {
           role: 'assistant', content: fullContent,
         }).catch(() => {})
       }
@@ -467,7 +433,7 @@ export default function Playground() {
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{conv.message_count || ''}</span>
                 <button type="button" onClick={(e) => deleteConversation(conv.id, e)}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 2, display: 'flex', opacity: 0.4 }}>
+                  className="icon-btn" style={{ opacity: 0.4 }}>
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -484,7 +450,7 @@ export default function Playground() {
           borderBottom: '1px solid var(--border)',
         }}>
           <button type="button" onClick={() => setSidebarOpen((v) => !v)}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 4, display: 'flex' }}>
+            className="icon-btn" style={{ padding: 4 }}>
             <Menu size={16} />
           </button>
           <Typography.Text style={{ fontWeight: 600, color: 'var(--foreground)', fontSize: 15 }}>游乐场</Typography.Text>
@@ -562,9 +528,7 @@ export default function Playground() {
                   value={model || undefined}
                   onChange={(v) => setModel(v)}
                   style={{ width: 'min(240px, 50%)' }}
-                  filterOption={(input, opt) =>
-                    String(opt?.value ?? '').toLowerCase().includes(input.toLowerCase())
-                  }
+                  filterOption={filterOptionBySearch}
                   options={models.map((m) => ({ label: m, value: m }))}
                   notFoundContent={null}
                   size="small"

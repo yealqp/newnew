@@ -9,9 +9,10 @@ import Tokens from './pages/Tokens'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
 import Playground from './pages/Playground'
+import { getToken } from './utils/auth'
 
 function RequireAuth() {
-  const token = localStorage.getItem('token')
+  const token = getToken()
   if (!token) return <Navigate to="/login" replace />
   return <Outlet />
 }

@@ -1015,3 +1015,13 @@ code, kbd, pre, samp {
   box-shadow: none !important;
   border-color: transparent !important;
 }
+
+/* 无边框图标按钮（游乐场消息操作 / 侧栏切换等共用） */
+.icon-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  padding: 2px;
+  display: flex;
+}

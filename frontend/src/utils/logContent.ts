@@ -9,6 +9,44 @@ export type ExtractedContent = {
   hasContent: boolean
 }
 
+/**
+ * Iterate SSE `data:` payloads from a raw stream dump, skipping blank
+ * payloads and the terminal "[DONE]" sentinel.
+ */
+export function* iterateSSEData(text: string): Generator<string> {
+  const lines = text.split(/\r?\n/)
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const data = trimmed.slice(5).trim()
+    if (!data || data === '[DONE]') continue
+    yield data
+  }
+}
+
+/** Pretty-print a JSON string, or return null if it isn't valid JSON. */
+function tryPrettyJSON(s: string): string | null {
+  try {
+    return JSON.stringify(JSON.parse(s), null, 2)
+  } catch {
+    return null
+  }
+}
+
+function roleLabel(role: unknown): string {
+  return String(role || 'unknown').toUpperCase()
+}
+
+function toolCallsToMarkdown(toolCalls: any[]): string[] {
+  const parts: string[] = []
+  for (const tc of toolCalls) {
+    const name = tc.function?.name || tc.name || ''
+    const args = tc.function?.arguments || tc.arguments || ''
+    parts.push(`**tool_call** \`${name}\`\n\`\`\`json\n${tryPretty(args)}\n\`\`\``)
+  }
+  return parts
+}
+
 export function extractLogContent(raw: string | undefined | null, kind: 'request' | 'response'): ExtractedContent {
   if (!raw || !raw.trim()) {
     return { markdown: '', format: 'empty', hasContent: false }
@@ -61,13 +99,7 @@ function parseSSE(s: string): { markdown: string; format: 'stream-openai' | 'str
   let role = ''
   let usageLine = ''
 
-  const lines = s.split(/\r?\n/)
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed.startsWith('data:')) continue
-    const data = trimmed.slice(5).trim()
-    if (!data || data === '[DONE]') continue
-
+  for (const data of iterateSSEData(s)) {
     let obj: any
     try {
       obj = JSON.parse(data)
@@ -164,15 +196,11 @@ function extractRequestJSON(obj: any): ExtractedContent {
     const parts: string[] = []
     if (obj.model) parts.push(`> model: \`${obj.model}\`${obj.stream ? ' · stream' : ''}`)
     for (const m of obj.messages) {
-      const role = (m.role || 'unknown').toUpperCase()
+      const role = roleLabel(m.role)
       const body = contentToMarkdown(m.content)
       const extra: string[] = []
       if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
-        for (const tc of m.tool_calls) {
-          const name = tc.function?.name || tc.name || ''
-          const args = tc.function?.arguments || tc.arguments || ''
-          extra.push(`**tool_call** \`${name}\`\n\`\`\`json\n${tryPretty(args)}\n\`\`\``)
-        }
+        extra.push(...toolCallsToMarkdown(m.tool_calls))
       }
       if (m.tool_call_id) {
         extra.push(`tool_call_id: \`${m.tool_call_id}\``)
@@ -192,7 +220,7 @@ function extractRequestJSON(obj: any): ExtractedContent {
     if (sys) parts.push(`\`\`\`SYSTEM\n${sys}\n\`\`\``)
     if (Array.isArray(obj.messages)) {
       for (const m of obj.messages) {
-        const role = (m.role || 'unknown').toUpperCase()
+        const role = roleLabel(m.role)
         const body = contentToMarkdown(m.content) || '*(empty)*'
         parts.push(`\`\`\`${role}\n${body}\n\`\`\``)
       }
@@ -222,11 +250,7 @@ function extractResponseJSON(obj: any): ExtractedContent {
       const reasoning = contentToMarkdown(msg.reasoning_content)
       const extras: string[] = []
       if (Array.isArray(msg.tool_calls)) {
-        for (const tc of msg.tool_calls) {
-          const name = tc.function?.name || ''
-          const args = tc.function?.arguments || ''
-          extras.push(`**tool_call** \`${name}\`\n\`\`\`json\n${tryPretty(args)}\n\`\`\``)
-        }
+        extras.push(...toolCallsToMarkdown(msg.tool_calls))
       }
       if (reasoning) {
         extras.unshift(`#### 思考过程\n\n${reasoning}`)
@@ -334,11 +358,7 @@ function contentToMarkdown(content: unknown): string {
 
 function tryPretty(s: unknown): string {
   if (typeof s !== 'string') return JSON.stringify(s, null, 2)
-  try {
-    return JSON.stringify(JSON.parse(s), null, 2)
-  } catch {
-    return s
-  }
+  return tryPrettyJSON(s) ?? s
 }
 
 /**
@@ -350,27 +370,14 @@ export function prettyJson(raw: string | undefined | null): string {
   const s = raw.trim()
 
   // Single valid JSON -> pretty-print
-  try {
-    return JSON.stringify(JSON.parse(s), null, 2)
-  } catch {
-    // not a single JSON — try SSE
-  }
+  const pretty = tryPrettyJSON(s)
+  if (pretty != null) return pretty
 
   // SSE dump: parse each data: line individually
   if (looksLikeSSE(s)) {
-    const lines = s.split(/\r?\n/)
     const parts: string[] = []
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('data:')) {
-        const data = trimmed.slice(5).trim()
-        if (!data || data === '[DONE]') continue
-        try {
-          parts.push(JSON.stringify(JSON.parse(data), null, 2))
-        } catch {
-          parts.push(data)
-        }
-      }
+    for (const data of iterateSSEData(s)) {
+      parts.push(tryPrettyJSON(data) ?? data)
     }
     if (parts.length) return parts.join('\n\n---\n\n')
   }
@@ -398,7 +405,7 @@ export function extractRawRoleBlocks(raw: string | undefined | null): RawRoleBlo
   }
   if (Array.isArray(obj.messages)) {
     for (const m of obj.messages) {
-      const role = (m.role || 'unknown').toUpperCase()
+      const role = roleLabel(m.role)
       let content = rawText(m.content)
       const extras: string[] = []
       if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
@@ -444,11 +451,7 @@ export function extractResponseText(raw: string | undefined | null): string {
 function extractStreamText(s: string): string {
   let text = ''
   let reasoning = ''
-  for (const line of s.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed.startsWith('data:')) continue
-    const data = trimmed.slice(5).trim()
-    if (!data || data === '[DONE]') continue
+  for (const data of iterateSSEData(s)) {
     let obj: any
     try { obj = JSON.parse(data) } catch { continue }
 

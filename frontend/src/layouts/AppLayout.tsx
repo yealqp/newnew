@@ -10,6 +10,7 @@ import {
   Cloud,
   Sparkles,
 } from 'lucide-react'
+import { clearAuth, getUsername } from '../utils/auth'
 
 const { Sider, Header, Content } = Layout
 
@@ -112,15 +113,14 @@ export default function AppLayout() {
           </Typography.Text>
           <Space size="middle">
             <Typography.Text style={{ fontSize: 13, color: '#e8e4dc', fontWeight: 500 }}>
-              {localStorage.getItem('username') || 'admin'}
+              {getUsername()}
             </Typography.Text>
             <Button
               type="text"
               icon={<LogOut size={16} />}
               style={{ color: '#8a8680' }}
               onClick={() => {
-                localStorage.removeItem('token')
-                localStorage.removeItem('username')
+                clearAuth()
                 nav('/login')
               }}
             >

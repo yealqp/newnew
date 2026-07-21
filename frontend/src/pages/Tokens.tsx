@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
   Button,
-  Drawer,
   Form,
   Input,
   Modal,
@@ -14,6 +13,9 @@ import {
 } from 'antd'
 import { Copy, Plus, RefreshCw, Edit, Trash2 } from 'lucide-react'
 import { api, type Token } from '../api/client'
+import { splitCsv, uniqueModelsFromChannels } from '../utils/models'
+import { filterOptionBySearch } from '../utils/format'
+import FormDrawer from '../components/FormDrawer'
 
 // 解析令牌的模型限制（JSON 数组或逗号分隔）为字符串数组。
 function parseModelLimits(v: string | undefined): string[] {
@@ -28,7 +30,7 @@ function parseModelLimits(v: string | undefined): string[] {
       return []
     }
   }
-  return s.split(',').map((x) => x.trim()).filter(Boolean)
+  return splitCsv(s)
 }
 
 export default function Tokens() {
@@ -53,21 +55,13 @@ export default function Tokens() {
   }
 
   // 汇总所有渠道的支持模型，作为模型限制下拉的可选项。
-  const loadModelOptions = async () => {
-    try {
-      const r = await api.listChannels()
-      const set = new Set<string>()
-      for (const ch of r.data || []) {
-        ;(ch.models || '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .forEach((m) => set.add(m))
-      }
-      setModelOptions(Array.from(set).sort())
-    } catch {
-      // 忽略：下拉仍可手动输入
-    }
+  const loadModelOptions = () => {
+    api
+      .listChannels()
+      .then((r) => setModelOptions(uniqueModelsFromChannels(r.data || [])))
+      .catch(() => {
+        // 忽略：下拉仍可手动输入
+      })
   }
 
   useEffect(() => {
@@ -222,21 +216,13 @@ export default function Tokens() {
 
       <Table rowKey="id" loading={loading} columns={columns} dataSource={list} pagination={{ pageSize: 20 }} />
 
-      <Drawer
+      <FormDrawer
         title={editing ? '编辑令牌' : '新建令牌'}
         open={open}
         onClose={() => setOpen(false)}
-        width={Math.min(440, typeof window !== 'undefined' ? window.innerWidth : 440)}
-        destroyOnHidden
-        placement="right"
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setOpen(false)}>取消</Button>
-            <Button type="primary" loading={saving} onClick={submit}>
-              保存
-            </Button>
-          </div>
-        }
+        onSave={submit}
+        saving={saving}
+        width={440}
       >
         <Form form={form} layout="vertical" requiredMark="optional">
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
@@ -258,13 +244,11 @@ export default function Tokens() {
               allowClear
               tokenSeparators={[',']}
               options={modelOptions.map((m) => ({ label: m, value: m }))}
-              filterOption={(input, opt) =>
-                String(opt?.value ?? '').toLowerCase().includes(input.toLowerCase())
-              }
+              filterOption={filterOptionBySearch}
             />
           </Form.Item>
         </Form>
-      </Drawer>
+      </FormDrawer>
 
       <Modal
         title="令牌 Key"

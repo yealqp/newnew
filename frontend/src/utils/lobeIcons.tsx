@@ -83,12 +83,6 @@ export const ICON_LIST: IconEntry[] = Object.entries(ICON_MAP).map(([id, compone
   component,
 }))
 
-/** Look up an icon component by its PascalCase string ID, or null. */
-export function resolveIcon(id?: string | null): IconComponentType | null {
-  if (!id) return null
-  return ICON_MAP[id] ?? null
-}
-
 /** Render a lobehub icon by its string ID. Returns null if unknown. */
 export function LobeIcon({
   id,

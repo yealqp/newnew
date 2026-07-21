@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Button,
-  Drawer,
   Form,
   Input,
   InputNumber,
@@ -29,6 +28,10 @@ import { OpenAI, Anthropic } from '@lobehub/icons'
 import { api, type Channel, type ModelPrice } from '../api/client'
 import IconPicker from '../components/IconPicker'
 import { LobeIcon } from '../utils/lobeIcons'
+import { formatTokenCount, filterOptionBySearch } from '../utils/format'
+import { splitCsv } from '../utils/models'
+import { useEditableRows } from '../hooks/useEditableRows'
+import FormDrawer from '../components/FormDrawer'
 
 type PricingMap = Record<string, ModelPrice>
 
@@ -161,9 +164,7 @@ function UpstreamModelSelect({
       searchValue={search}
       onSearch={setSearch}
       options={supportedModels.map((m) => ({ label: m, value: m }))}
-      filterOption={(input, opt) =>
-        String(opt?.value ?? '').toLowerCase().includes(input.toLowerCase())
-      }
+      filterOption={filterOptionBySearch}
       onChange={(v) => commit(v ?? '')}
       onInputKeyDown={(e) => {
         if (e.key === 'Enter' && showCustom) {
@@ -193,13 +194,6 @@ function UpstreamModelSelect({
       )}
     />
   )
-}
-
-function formatTokens(n: number): string {
-  if (!n) return '-'
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
 }
 
 function formatResponseTime(timeMs?: number): string {
@@ -235,8 +229,8 @@ export default function Channels() {
   const [editing, setEditing] = useState<Channel | null>(null)
   const [form] = Form.useForm()
   const supportedModels: string[] = Form.useWatch('models', form) || []
-  const [pricingRows, setPricingRows] = useState<PricingRow[]>([])
-  const [mappingRows, setMappingRows] = useState<MappingRow[]>([])
+  const pricingEditor = useEditableRows<PricingRow>(emptyRow)
+  const mappingEditor = useEditableRows<MappingRow>(emptyMappingRow)
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [upstreamModels, setUpstreamModels] = useState<string[]>([])
@@ -271,8 +265,8 @@ export default function Channels() {
       full_url: false,
       models: [],
     })
-    setPricingRows([])
-    setMappingRows([])
+    pricingEditor.setRows([])
+    mappingEditor.setRows([])
     setOpen(true)
   }
 
@@ -281,45 +275,17 @@ export default function Channels() {
     try {
       const r = await api.getChannel(row.id)
       const ch = r.data
-      const modelsArr = ch.models
-        ? ch.models.split(',').map((s: string) => s.trim()).filter(Boolean)
-        : []
+      const modelsArr = splitCsv(ch.models)
       form.setFieldsValue({ ...ch, models: modelsArr })
-      setPricingRows(pricingToRows(parsePricing(ch.pricing || '{}')))
-      setMappingRows(mappingToRows(parseMapping(ch.model_mapping || '{}')))
+      pricingEditor.setRows(pricingToRows(parsePricing(ch.pricing || '{}')))
+      mappingEditor.setRows(mappingToRows(parseMapping(ch.model_mapping || '{}')))
     } catch {
-      const modelsArr = row.models
-        ? row.models.split(',').map((s: string) => s.trim()).filter(Boolean)
-        : []
+      const modelsArr = splitCsv(row.models)
       form.setFieldsValue({ ...row, models: modelsArr })
-      setPricingRows(pricingToRows(parsePricing(row.pricing || '{}')))
-      setMappingRows(mappingToRows(parseMapping(row.model_mapping || '{}')))
+      pricingEditor.setRows(pricingToRows(parsePricing(row.pricing || '{}')))
+      mappingEditor.setRows(mappingToRows(parseMapping(row.model_mapping || '{}')))
     }
     setOpen(true)
-  }
-
-  const updateRow = (key: string, patch: Partial<PricingRow>) => {
-    setPricingRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  }
-
-  const removeRow = (key: string) => {
-    setPricingRows((rows) => rows.filter((r) => r.key !== key))
-  }
-
-  const addRow = () => {
-    setPricingRows((rows) => [...rows, emptyRow()])
-  }
-
-  const updateMappingRow = (key: string, patch: Partial<MappingRow>) => {
-    setMappingRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  }
-
-  const removeMappingRow = (key: string) => {
-    setMappingRows((rows) => rows.filter((r) => r.key !== key))
-  }
-
-  const addMappingRow = () => {
-    setMappingRows((rows) => [...rows, emptyMappingRow()])
   }
 
   const fetchUpstreamModels = async () => {
@@ -370,7 +336,7 @@ export default function Channels() {
     }
     form.setFieldsValue({ models: selectedModels })
     setModelPickerOpen(false)
-    const current = rowsToPricing(pricingRows)
+    const current = rowsToPricing(pricingEditor.rows)
     const rows: PricingRow[] = selectedModels.map((model, i) => {
       const p = current[model]
       return {
@@ -382,7 +348,7 @@ export default function Channels() {
         cache_write: p?.cache_write ?? 0,
       }
     })
-    setPricingRows(rows)
+    pricingEditor.setRows(rows)
     message.success(`已填入 ${selectedModels.length} 个模型`)
   }
 
@@ -398,7 +364,7 @@ export default function Channels() {
       message.warning('请先选择支持模型')
       return
     }
-    const current = rowsToPricing(pricingRows)
+    const current = rowsToPricing(pricingEditor.rows)
     const next: PricingRow[] = models.map((model, i) => {
       const p = current[model]
       return {
@@ -410,18 +376,18 @@ export default function Channels() {
         cache_write: p?.cache_write ?? 0,
       }
     })
-    for (const r of pricingRows) {
+    for (const r of pricingEditor.rows) {
       if (r.model && !models.includes(r.model.trim())) {
         next.push(r)
       }
     }
-    setPricingRows(next)
+    pricingEditor.setRows(next)
     message.success('已从支持模型同步')
   }
 
   const submit = async () => {
     const values = await form.validateFields()
-    const pricing = rowsToPricing(pricingRows)
+    const pricing = rowsToPricing(pricingEditor.rows)
     if (!Object.keys(pricing).length) {
       message.error('请至少配置一个模型定价')
       return
@@ -434,7 +400,7 @@ export default function Channels() {
 
     // 校验：映射两侧模型若不在「支持模型」列表，提醒用户是否加入。
     // 请求模型（左侧）不在列表时无法被路由匹配，影响更大，单独提示。
-    const mapping = rowsToMapping(mappingRows)
+    const mapping = rowsToMapping(mappingEditor.rows)
     const q = (m: string) => `“${m}”`
     const reqMissing = Object.keys(mapping).filter((m) => !models.includes(m))
     const upMissing = Array.from(
@@ -498,8 +464,7 @@ export default function Channels() {
     setTestingId(id)
     try {
       const r = await api.testChannel(id)
-      const t = r.data.response_time
-      const dur = t >= 1000 ? `${(t / 1000).toFixed(2)}s` : `${Math.round(t)}ms`
+      const dur = formatResponseTime(r.data.response_time)
       message.success(`测试成功：${dur}`)
       load()
     } catch (err: any) {
@@ -549,7 +514,7 @@ export default function Channels() {
       sorter: (a: Channel, b: Channel) => (a.total_tokens || 0) - (b.total_tokens || 0),
       render: (v: number) => (
         <span className="mono" style={{ color: 'var(--primary)' }}>
-          {formatTokens(v)}
+          {formatTokenCount(v, '-')}
         </span>
       ),
     },
@@ -657,24 +622,14 @@ export default function Channels() {
         scroll={{ x: 1200 }}
       />
 
-      <Drawer
+      <FormDrawer
         title={editing ? '编辑渠道' : '新建渠道'}
         open={open}
         onClose={() => setOpen(false)}
-        width={Math.min(720, typeof window !== 'undefined' ? window.innerWidth : 720)}
-        destroyOnHidden
-        placement="right"
-        styles={{
-          body: { paddingBottom: 80 },
-        }}
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button onClick={() => setOpen(false)}>取消</Button>
-            <Button type="primary" loading={saving} onClick={submit}>
-              保存
-            </Button>
-          </div>
-        }
+        onSave={submit}
+        saving={saving}
+        width={720}
+        bodyStyle={{ paddingBottom: 80 }}
       >
         <Form form={form} layout="vertical" requiredMark="optional">
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -816,30 +771,30 @@ export default function Channels() {
                 <span />
               </div>
               <div className="mapping-editor-body">
-                {mappingRows.length === 0 ? (
+                {mappingEditor.rows.length === 0 ? (
                   <div style={{ padding: 14, color: 'var(--text-dim)', fontSize: 13, textAlign: 'center' }}>
                     无映射时按同名转发
                   </div>
                 ) : (
-                  mappingRows.map((row) => (
+                  mappingEditor.rows.map((row, idx) => (
                     <div className="mapping-editor-row" key={row.key}>
                       <Input
                         className="mono"
                         placeholder="client-model"
                         value={row.request}
-                        onChange={(e) => updateMappingRow(row.key, { request: e.target.value })}
+                        onChange={(e) => mappingEditor.update(idx, 'request', e.target.value)}
                       />
                       <span className="mapping-arrow">→</span>
                       <UpstreamModelSelect
                         value={row.upstream}
                         supportedModels={supportedModels}
-                        onChange={(v) => updateMappingRow(row.key, { upstream: v })}
+                        onChange={(v) => mappingEditor.update(idx, 'upstream', v)}
                       />
                       <Button
                         type="text"
                         danger
                         icon={<Trash2 size={14} />}
-                        onClick={() => removeMappingRow(row.key)}
+                        onClick={() => mappingEditor.remove(idx)}
                       />
                     </div>
                   ))
@@ -847,7 +802,7 @@ export default function Channels() {
               </div>
               <div className="mapping-editor-actions">
                 <span />
-                <Button size="small" type="dashed" icon={<Plus size={14} />} onClick={addMappingRow}>
+                <Button size="small" type="dashed" icon={<Plus size={14} />} onClick={mappingEditor.add}>
                   添加映射
                 </Button>
               </div>
@@ -867,52 +822,52 @@ export default function Channels() {
                 <span />
               </div>
               <div className="pricing-editor-body">
-                {pricingRows.length === 0 ? (
+                {pricingEditor.rows.length === 0 ? (
                   <div style={{ padding: 16, color: 'var(--text-dim)', fontSize: 13, textAlign: 'center' }}>
                     暂无定价，点击下方添加
                   </div>
                 ) : (
-                  pricingRows.map((row) => (
+                  pricingEditor.rows.map((row, idx) => (
                     <div className="pricing-editor-row" key={row.key}>
                       <Input
                         className="mono"
                         placeholder="model-id"
                         value={row.model}
-                        onChange={(e) => updateRow(row.key, { model: e.target.value })}
+                        onChange={(e) => pricingEditor.update(idx, 'model', e.target.value)}
                       />
                       <InputNumber
                         min={0}
                         step={0.01}
                         controls={false}
                         value={row.input}
-                        onChange={(v) => updateRow(row.key, { input: Number(v) || 0 })}
+                        onChange={(v) => pricingEditor.update(idx, 'input', Number(v) || 0)}
                       />
                       <InputNumber
                         min={0}
                         step={0.01}
                         controls={false}
                         value={row.output}
-                        onChange={(v) => updateRow(row.key, { output: Number(v) || 0 })}
+                        onChange={(v) => pricingEditor.update(idx, 'output', Number(v) || 0)}
                       />
                       <InputNumber
                         min={0}
                         step={0.01}
                         controls={false}
                         value={row.cache_read}
-                        onChange={(v) => updateRow(row.key, { cache_read: Number(v) || 0 })}
+                        onChange={(v) => pricingEditor.update(idx, 'cache_read', Number(v) || 0)}
                       />
                       <InputNumber
                         min={0}
                         step={0.01}
                         controls={false}
                         value={row.cache_write}
-                        onChange={(v) => updateRow(row.key, { cache_write: Number(v) || 0 })}
+                        onChange={(v) => pricingEditor.update(idx, 'cache_write', Number(v) || 0)}
                       />
                       <Button
                         type="text"
                         danger
                         icon={<Trash2 size={14} />}
-                        onClick={() => removeRow(row.key)}
+                        onClick={() => pricingEditor.remove(idx)}
                       />
                     </div>
                   ))
@@ -922,7 +877,7 @@ export default function Channels() {
                 <Button size="small" onClick={syncFromModels}>
                   从支持模型同步
                 </Button>
-                <Button size="small" type="dashed" icon={<Plus size={14} />} onClick={addRow}>
+                <Button size="small" type="dashed" icon={<Plus size={14} />} onClick={pricingEditor.add}>
                   添加模型
                 </Button>
               </div>
@@ -933,7 +888,7 @@ export default function Channels() {
             <Input />
           </Form.Item>
         </Form>
-      </Drawer>
+      </FormDrawer>
 
       <Modal
         title={`选择模型（共 ${upstreamModels.length} 个）`}

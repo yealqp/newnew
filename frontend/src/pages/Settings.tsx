@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button, Card, Form, Input, InputNumber, Select, message } from 'antd'
 import { Save, Key } from 'lucide-react'
 import { api } from '../api/client'
+import { getUsername, setAuth } from '../utils/auth'
 
 export default function Settings() {
   const [form] = Form.useForm()
@@ -33,7 +34,7 @@ export default function Settings() {
     }
   }
 
-  const currentUsername = localStorage.getItem('username') || 'admin'
+  const currentUsername = getUsername()
 
   useEffect(() => {
     pwdForm.setFieldsValue({ new_username: currentUsername })
@@ -52,8 +53,7 @@ export default function Settings() {
       new_username: usernameChanged ? newUsername : undefined,
       new_password: v.new_password || undefined,
     })
-    if (r.data?.token) localStorage.setItem('token', r.data.token)
-    if (r.data?.username) localStorage.setItem('username', r.data.username)
+    if (r.data?.token && r.data?.username) setAuth(r.data.token, r.data.username)
     message.success('账户已更新')
     pwdForm.resetFields()
     pwdForm.setFieldsValue({ new_username: r.data?.username || newUsername || currentUsername })

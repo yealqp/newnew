@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { message } from 'antd'
+import { clearAuth, getToken } from '../utils/auth'
 
 const client = axios.create({
   baseURL: '/api/admin',
@@ -15,7 +16,7 @@ client.interceptors.request.use((config) => {
     }
     return config
   }
-  const token = localStorage.getItem('token')
+  const token = getToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -44,7 +45,7 @@ client.interceptors.response.use(
     const isLoginRequest = (err.config?.url || '').includes('/login')
 
     if (status === 401 && !isLoginRequest) {
-      localStorage.removeItem('token')
+      clearAuth()
       if (!onLoginPage) {
         window.location.href = '/login'
       }
@@ -122,32 +123,6 @@ export interface RequestLog {
   detail: string
 }
 
-export interface DashboardData {
-  today: {
-    requests: number
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-    cost_rmb: number
-  }
-  total: {
-    requests: number
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-    cost_rmb: number
-  }
-  series: Array<{
-    day: string
-    requests: number
-    prompt_tokens: number
-    completion_tokens: number
-    cost_rmb: number
-  }>
-  channel_count: number
-  token_count: number
-}
-
 export interface DashboardRangeData {
   requests: number
   prompt_tokens: number
@@ -213,8 +188,6 @@ export const api = {
   login: (username: string, password: string) =>
     client.post<{ token: string; username: string }>('/login', { username, password }),
 
-  me: () => client.get('/me'),
-
   updateAccount: (data: { old_password: string; new_username?: string; new_password?: string }) =>
     client.post<{ username: string; token: string }>('/change-password', data),
 
@@ -251,10 +224,36 @@ export const api = {
     client.get<{ list: RequestLog[]; total: number; page: number; page_size: number }>('/logs', { params }),
   getLog: (id: number) => client.get<RequestLog>(`/logs/${id}`),
 
-  dashboard: () => client.get<DashboardData>('/dashboard'),
   dashboardRange: (start: string, end: string, granularity?: string) =>
     client.get<DashboardRangeData>('/dashboard', { params: { start, end, granularity } }),
 
   getSettings: () => client.get<Record<string, string>>('/settings'),
   updateSettings: (data: Record<string, string>) => client.put('/settings', data),
+
+  // ---- playground ----
+  listConversations: () => client.get<Conversation[]>('/playground/conversations'),
+  createConversation: (data: { title?: string; model?: string }) =>
+    client.post<Conversation>('/playground/conversations', data),
+  deleteConversation: (id: number) => client.delete(`/playground/conversations/${id}`),
+  listConversationMessages: (id: number) =>
+    client.get<ConversationMessage[]>(`/playground/conversations/${id}/messages`),
+  addConversationMessage: (id: number, data: { role: string; content: string }) =>
+    client.post<ConversationMessage>(`/playground/conversations/${id}/messages`, data),
+}
+
+export interface Conversation {
+  id: number
+  title: string
+  model: string
+  message_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationMessage {
+  id: number
+  conversation_id: number
+  role: string
+  content: string
+  created_at: string
 }

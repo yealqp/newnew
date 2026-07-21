@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Input, Popover } from 'antd'
-import { ICON_LIST } from '../utils/lobeIcons'
+import { ICON_LIST, LobeIcon } from '../utils/lobeIcons'
 import type { IconEntry } from '../utils/lobeIcons'
 
 interface IconPickerProps {
@@ -17,9 +17,6 @@ function Chunk({
   active: boolean
   onSelect: (id: string) => void
 }) {
-  const Comp = entry.component
-  const ColorComp = (Comp as any)?.Color
-  const Target = ColorComp || Comp
   return (
     <button
       type="button"
@@ -50,7 +47,7 @@ function Chunk({
         }
       }}
     >
-      <Target size={18} />
+      <LobeIcon id={entry.id} size={18} />
       <span style={{ whiteSpace: 'nowrap' }}>{entry.id}</span>
     </button>
   )
@@ -190,11 +187,7 @@ export default function IconPicker({ value, onChange }: IconPickerProps) {
       >
         {CurrentIcon ? (
           <>
-            {(() => {
-              const Comp = CurrentIcon.component
-              const C = (Comp as any)?.Color || Comp
-              return <C size={16} />
-            })()}
+            <LobeIcon id={CurrentIcon.id} size={16} />
             {CurrentIcon.id}
           </>
         ) : (

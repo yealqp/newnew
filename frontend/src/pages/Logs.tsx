@@ -15,8 +15,10 @@ import {
 import { Search, Eye } from 'lucide-react'
 import dayjs from 'dayjs'
 import { api, type RequestLog } from '../api/client'
-import MarkdownView, { isRoleLang } from '../components/MarkdownView'
+import MarkdownView, { RoleCodeBlock, isRoleLang } from '../components/MarkdownView'
 import { extractLogContent, extractRawRoleBlocks, extractResponseText, prettyJson } from '../utils/logContent'
+import { formatCostRMB, formatTokenSpeed } from '../utils/format'
+import { responsiveWidth } from '../components/FormDrawer'
 
 export default function Logs() {
   const [list, setList] = useState<RequestLog[]>([])
@@ -55,6 +57,10 @@ export default function Logs() {
   const respExtracted = useMemo(
     () => extractLogContent(detail?.response_body, 'response'),
     [detail?.response_body],
+  )
+  const detailSpeed = useMemo(
+    () => (detail ? formatTokenSpeed(detail.total_tokens, detail.duration_ms) : null),
+    [detail?.total_tokens, detail?.duration_ms],
   )
 
   const columns = [
@@ -119,16 +125,13 @@ export default function Logs() {
       title: '费用',
       dataIndex: 'cost_rmb',
       width: 110,
-      render: (v: number) => <span className="cost">¥{(v || 0).toFixed(6)}</span>,
+      render: (v: number) => <span className="cost">{formatCostRMB(v)}</span>,
     },
     {
       title: '耗时',
       width: 150,
       render: (_: unknown, r: RequestLog) => {
-        const totalSec = r.duration_ms / 1000
-        const speed = r.total_tokens > 0 && totalSec > 0
-          ? Math.round(r.total_tokens / totalSec)
-          : null
+        const speed = formatTokenSpeed(r.total_tokens, r.duration_ms)
         return (
           <div className="mono" style={{ fontSize: 11, lineHeight: 1.6 }}>
             <div style={{ marginBottom: 2 }}>
@@ -145,7 +148,7 @@ export default function Logs() {
               <>
                 <br />
                 <span style={{ color: 'var(--text-dim)' }}>Speed </span>
-                <span style={{ color: 'var(--success)' }}>{speed.toLocaleString()} t/s</span>
+                <span style={{ color: 'var(--success)' }}>{speed}</span>
               </>
             ) : null}
           </div>
@@ -225,7 +228,7 @@ export default function Logs() {
         title="请求详情"
         open={!!detail}
         onClose={() => setDetail(null)}
-        width={Math.min(820, typeof window !== 'undefined' ? window.innerWidth : 820)}
+        width={responsiveWidth(820)}
         destroyOnHidden
       >
         {detail && (
@@ -257,16 +260,14 @@ export default function Logs() {
               <Descriptions.Item label="Cache Read">{detail.cache_read_tokens}</Descriptions.Item>
               <Descriptions.Item label="Cache Write">{detail.cache_write_tokens}</Descriptions.Item>
               <Descriptions.Item label="费用">
-                <span className="cost">¥{(detail.cost_rmb || 0).toFixed(6)}</span>
+                <span className="cost">{formatCostRMB(detail.cost_rmb)}</span>
               </Descriptions.Item>
               <Descriptions.Item label="耗时">
                 <span className="mono">{detail.duration_ms} ms</span>
                 {detail.is_stream && detail.first_token_ms ? (
                   <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
                     TTFT {detail.first_token_ms}ms
-                    {detail.total_tokens > 0
-                      ? ` · ${Math.round(detail.total_tokens / (detail.duration_ms / 1000)).toLocaleString()} t/s`
-                      : ''}
+                    {detailSpeed ? ` · ${detailSpeed}` : ''}
                   </span>
                 ) : null}
               </Descriptions.Item>
@@ -387,14 +388,18 @@ function RawRoleView({ raw }: { raw: string }) {
   }
   return (
     <div className="md-view" style={{ maxHeight: 420 }}>
-      {blocks.map((b, i) => (
-        <div key={i} className="md-code-block">
-          <div className={`md-code-block-lang${isRoleLang(b.role) ? ' md-code-block-lang-role' : ''}`}>
-            {b.role}
+      {blocks.map((b, i) =>
+        isRoleLang(b.role) ? (
+          <RoleCodeBlock key={i} role={b.role}>
+            <pre className="md-raw-content">{b.content}</pre>
+          </RoleCodeBlock>
+        ) : (
+          <div key={i} className="md-code-block">
+            <div className="md-code-block-lang">{b.role}</div>
+            <pre className="md-raw-content">{b.content}</pre>
           </div>
-          <pre className="md-raw-content">{b.content}</pre>
-        </div>
-      ))}
+        ),
+      )}
     </div>
   )
 }

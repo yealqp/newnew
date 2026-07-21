@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Form, Input, message } from 'antd'
 import { Lock, User } from 'lucide-react'
 import { api } from '../api/client'
+import { clearAuth, setAuth } from '../utils/auth'
 
 export default function Login() {
   const nav = useNavigate()
@@ -11,15 +12,14 @@ export default function Login() {
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true)
     try {
-      localStorage.removeItem('token')
+      clearAuth()
       const res = await api.login(values.username, values.password)
       const token = res.data?.token
       if (!token) {
         message.error('登录响应异常：未返回 token')
         return
       }
-      localStorage.setItem('token', token)
-      localStorage.setItem('username', res.data.username || values.username)
+      setAuth(token, res.data.username || values.username)
       message.success('登录成功')
       nav('/', { replace: true })
     } catch {
