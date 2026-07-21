@@ -20,8 +20,8 @@ pnpm dev                     # vite 把 /api /v1 /health 代理到 127.0.0.1:300
 pnpm build                   # tsc -b && vite build；仅类型检查: npx tsc -b
 pnpm lint                    # oxlint
 
-# 四种构建产物（PowerShell 5.1；.ps1 必须保留 UTF-8 BOM，否则中文注释炸解析）
-scripts/build-frontend.ps1 | build-backend.ps1 | build-fullstack.ps1 | build-desktop.ps1 [-NoBundle]
+# 四种构建产物（Node.js 脚本，跨平台；node scripts/build-*.js）
+node scripts/build-frontend.js | build-backend.js | build-fullstack.js | build-desktop.js [--no-bundle]
 ```
 
 Windows + windows-gnu 工具链开发；Tauri 2 在该工具链可直接编译，无需 MSVC。
