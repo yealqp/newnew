@@ -3,6 +3,7 @@ import { ConfigProvider, theme, App as AntApp } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import AppLayout from './layouts/AppLayout'
 import Login from './pages/Login'
+import Setup from './pages/Setup'
 import Dashboard from './pages/Dashboard'
 import Channels from './pages/Channels'
 import Tokens from './pages/Tokens'
@@ -117,6 +118,7 @@ export default function App() {
       <AntApp>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/setup" element={<Setup />} />
           <Route element={<RequireAuth />}>
             <Route element={<AppLayout />}>
               <Route index element={<Dashboard />} />

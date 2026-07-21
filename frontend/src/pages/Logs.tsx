@@ -225,7 +225,7 @@ export default function Logs() {
         title="请求详情"
         open={!!detail}
         onClose={() => setDetail(null)}
-        width={Math.min(820, typeof window !== 'undefined' ? window.innerWidth : 820)}
+        size={Math.min(820, typeof window !== 'undefined' ? window.innerWidth : 820)}
         destroyOnHidden
       >
         {detail && (

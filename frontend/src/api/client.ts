@@ -213,6 +213,10 @@ export const api = {
   login: (username: string, password: string) =>
     client.post<{ token: string; username: string }>('/login', { username, password }),
 
+  setupStatus: () => client.get<{ initialized: boolean }>('/setup/status'),
+  setup: (username: string, password: string) =>
+    client.post<{ token: string; username: string }>('/setup', { username, password }),
+
   me: () => client.get('/me'),
 
   updateAccount: (data: { old_password: string; new_username?: string; new_password?: string }) =>

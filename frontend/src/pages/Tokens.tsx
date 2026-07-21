@@ -226,7 +226,7 @@ export default function Tokens() {
         title={editing ? '编辑令牌' : '新建令牌'}
         open={open}
         onClose={() => setOpen(false)}
-        width={Math.min(440, typeof window !== 'undefined' ? window.innerWidth : 440)}
+        size={Math.min(440, typeof window !== 'undefined' ? window.innerWidth : 440)}
         destroyOnHidden
         placement="right"
         footer={

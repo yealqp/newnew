@@ -661,7 +661,7 @@ export default function Channels() {
         title={editing ? '编辑渠道' : '新建渠道'}
         open={open}
         onClose={() => setOpen(false)}
-        width={Math.min(720, typeof window !== 'undefined' ? window.innerWidth : 720)}
+        size={Math.min(720, typeof window !== 'undefined' ? window.innerWidth : 720)}
         destroyOnHidden
         placement="right"
         styles={{

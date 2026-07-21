@@ -62,6 +62,60 @@ func Login(c *fiber.Ctx) error {
 	}))
 }
 
+// ---- Setup (first-run initialization) ----
+
+func SetupStatus(c *fiber.Ctx) error {
+	var count int64
+	db.DB.Model(&model.User{}).Count(&count)
+	return c.JSON(ok(fiber.Map{"initialized": count > 0}))
+}
+
+type setupReq struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func Setup(c *fiber.Ctx) error {
+	var count int64
+	db.DB.Model(&model.User{}).Count(&count)
+	if count > 0 {
+		return c.Status(400).JSON(fail("already initialized"))
+	}
+
+	var req setupReq
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fail("invalid body"))
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if len(req.Username) < 3 {
+		return c.Status(400).JSON(fail("username too short (min 3 characters)"))
+	}
+	if len(req.Password) < 6 {
+		return c.Status(400).JSON(fail("password too short (min 6 characters)"))
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(500).JSON(fail("hash error"))
+	}
+	user := model.User{
+		Username:     req.Username,
+		PasswordHash: string(hash),
+	}
+	if err := db.DB.Create(&user).Error; err != nil {
+		return c.Status(500).JSON(fail(err.Error()))
+	}
+
+	token, err := middleware.GenerateJWT(user.ID, user.Username)
+	if err != nil {
+		return c.Status(500).JSON(fail("token error"))
+	}
+	return c.JSON(ok(fiber.Map{
+		"token":    token,
+		"username": user.Username,
+	}))
+}
+
 func Me(c *fiber.Ctx) error {
 	return c.JSON(ok(fiber.Map{
 		"username": c.Locals(middleware.LocalsUsername),
@@ -950,10 +1004,11 @@ func dashboardRange(c *fiber.Ctx, startStr, endStr, granularity string) error {
 	// Bucket expression per requested granularity. Falls back to auto:
 	// hourly for short ranges, daily for longer.
 	const (
-		hourExpr = "strftime('%Y-%m-%d %H:00', created_at)"
-		dayExpr  = "strftime('%Y-%m-%d', created_at)"
+		hourExpr  = "strftime('%Y-%m-%d %H:00', created_at)"
+		dayExpr   = "strftime('%Y-%m-%d', created_at)"
 		// Start-of-week (Monday) as a plain date, so the frontend can parse it.
-		weekExpr = "date(created_at, '-' || ((strftime('%w', created_at) + 6) % 7) || ' days')"
+		weekExpr  = "date(created_at, '-' || ((strftime('%w', created_at) + 6) % 7) || ' days')"
+		monthExpr = "strftime('%Y-%m', created_at)"
 	)
 	var bucketExpr string
 	switch granularity {
@@ -963,6 +1018,8 @@ func dashboardRange(c *fiber.Ctx, startStr, endStr, granularity string) error {
 		bucketExpr = dayExpr
 	case "week":
 		bucketExpr = weekExpr
+	case "month":
+		bucketExpr = monthExpr
 	default:
 		if end.Sub(start) <= 48*time.Hour {
 			bucketExpr = hourExpr

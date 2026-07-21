@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Form, Input, message } from 'antd'
 import { Lock, User } from 'lucide-react'
@@ -7,6 +7,19 @@ import { api } from '../api/client'
 export default function Login() {
   const nav = useNavigate()
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    api
+      .setupStatus()
+      .then((res: any) => {
+        if (!res.data?.initialized) {
+          nav('/setup', { replace: true })
+        }
+      })
+      .catch(() => { /* ignore */ })
+      .finally(() => setChecking(false))
+  }, [nav])
 
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true)
@@ -29,6 +42,8 @@ export default function Login() {
     }
   }
 
+  if (checking) return null
+
   return (
     <div className="login-bg">
       <div className="login-card">
@@ -39,7 +54,7 @@ export default function Login() {
             <p>OpenAI / Claude 聚合网关</p>
           </div>
         </div>
-        <Form layout="vertical" onFinish={onFinish} initialValues={{ username: 'admin' }} size="large">
+        <Form layout="vertical" onFinish={onFinish} size="large">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input prefix={<User size={16} />} placeholder="用户名" autoComplete="username" />
           </Form.Item>
@@ -50,9 +65,6 @@ export default function Login() {
             登录
           </Button>
         </Form>
-        <p style={{ marginTop: 20, textAlign: 'center', color: 'var(--text-dim)', fontSize: 12 }}>
-          默认账号 admin / admin123
-        </p>
       </div>
     </div>
   )

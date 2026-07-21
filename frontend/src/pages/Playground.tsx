@@ -276,8 +276,11 @@ export default function Playground() {
   }, [])
 
   const loadConversations = useCallback(async () => {
-    try { setConversations((await apiGet<Conversation[]>('/api/admin/playground/conversations')) || [])
-    } catch { /* ignore */ }
+    try {
+      const list = (await apiGet<Conversation[]>('/api/admin/playground/conversations')) || []
+      setConversations(list)
+      return list
+    } catch { return [] }
   }, [])
   useEffect(() => { loadConversations() }, [loadConversations])
 
@@ -295,14 +298,6 @@ export default function Playground() {
   const scrollBottom = () =>
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
   useEffect(() => { scrollBottom() }, [messages, streamingContent])
-
-  const createConversation = async () => {
-    const conv = await apiPost<Conversation>('/api/admin/playground/conversations', {
-      title: '新对话', model: model || models[0] || '',
-    })
-    setConversations((prev) => [conv, ...prev])
-    setActiveId(conv.id); setMessages([]); setStreamingContent('')
-  }
 
   const deleteConversation = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -322,11 +317,26 @@ export default function Playground() {
 
   const send = useCallback(async (overrides?: { msg?: string; msgs?: ChatMsg[] }) => {
     const text = overrides?.msg ?? input.trim()
-    if (!text || !model || loading || !activeId) {
-      if (!activeId) message.warning('请先新建或选择一个对话')
-      return
-    }
+    if (!text || !model || loading) return
     if (!overrides?.msg) setInput('')
+
+    // Auto-create conversation if in "new conversation" mode
+    let cid = activeId
+    if (!cid) {
+      try {
+        const conv = await apiPost<Conversation>('/api/admin/playground/conversations', {
+          title: text.slice(0, 50), model,
+        })
+        setConversations((prev) => [conv, ...prev])
+        cid = conv.id
+        setActiveId(cid)
+        setMessages([])
+      } catch {
+        message.error('创建对话失败')
+        return
+      }
+    }
+
     setLoading(true)
 
     const userMsg: ChatMsg = { role: 'user', content: text }
@@ -343,7 +353,7 @@ export default function Playground() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN()}` },
         body: JSON.stringify({
-          conversation_id: activeId, model,
+          conversation_id: cid, model,
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           temperature: 0.7,
         }),
@@ -424,13 +434,28 @@ export default function Playground() {
         transition: 'width 0.2s',
       }}>
         <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
-          <Button block type="dashed" icon={<Plus size={14} />} onClick={createConversation}>新建对话</Button>
+          <Button block type="dashed" icon={<Plus size={14} />} onClick={() => { setActiveId(null); setMessages([]); setStreamingContent('') }}>新建对话</Button>
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: 6 }}>
-          {conversations.length === 0 ? (
+          {conversations.length === 0 && activeId !== null ? (
             <div style={{ color: 'var(--text-dim)', fontSize: 12, textAlign: 'center', padding: 16 }}>暂无对话</div>
           ) : (
-            conversations.map((conv) => (
+            <>
+              {/* "New conversation" entry */}
+              <div onClick={() => { setActiveId(null); setMessages([]); setStreamingContent('') }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 6,
+                  cursor: 'pointer', marginBottom: 2,
+                  background: activeId === null ? 'var(--primary-soft)' : 'transparent',
+                  color: activeId === null ? 'var(--foreground)' : 'var(--text-dim)', fontSize: 13,
+                }}
+                onPointerEnter={(e) => { if (activeId !== null) e.currentTarget.style.background = 'var(--muted)' }}
+                onPointerLeave={(e) => { if (activeId !== null) e.currentTarget.style.background = 'transparent' }}
+              >
+                <Plus size={14} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>新对话</span>
+              </div>
+              {conversations.map((conv) => (
               <div key={conv.id} onClick={() => setActiveId(conv.id)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 6,
@@ -451,7 +476,8 @@ export default function Playground() {
                   <Trash2 size={12} />
                 </button>
               </div>
-            ))
+            ))}
+            </>
           )}
         </div>
       </div>
@@ -479,7 +505,7 @@ export default function Playground() {
                 <div style={{ textAlign: 'center', padding: 40 }}>
                   <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>✦</div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>OpenGate 游乐场</div>
-                  <div style={{ fontSize: 13 }}>新建一个对话开始测试你的渠道</div>
+                  <div style={{ fontSize: 13 }}>在下方输入消息开始测试你的渠道</div>
                 </div>
               </div>
             ) : allMessages.length === 0 && !loading ? (
@@ -521,7 +547,7 @@ export default function Playground() {
                 onKeyDown={handleKeyDown}
                 placeholder="输入消息，Enter 发送，Shift+Enter 换行"
                 rows={3}
-                disabled={loading || !activeId}
+                disabled={loading}
                 style={{
                   fontFamily: 'var(--font-body)', fontSize: 14, resize: 'none',
                   border: 'none', background: 'transparent', padding: '12px 16px 8px',
