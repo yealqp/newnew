@@ -4,6 +4,7 @@ frontend/node_modules/
 backend/target/
 backend/data/
 desktop/node_modules/
+scripts/node_modules/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 *.db

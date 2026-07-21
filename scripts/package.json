@@ -1,0 +1,16 @@
+{
+  "name": "opengate-scripts",
+  "private": true,
+  "version": "0.0.0",
+  "description": "OpenGate 构建脚本与图标生成工具（自包含，不被前端/后端引用）",
+  "scripts": {
+    "icons": "node gen-desktop-icons.js",
+    "build:frontend": "node build-frontend.js",
+    "build:backend": "node build-backend.js",
+    "build:fullstack": "node build-fullstack.js",
+    "build:desktop": "node build-desktop.js"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

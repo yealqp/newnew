@@ -1,9 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <!-- 整体绕画布中心顺时针旋转 90° 并放大 1.2 倍 -->
   <g transform="translate(128 128) rotate(90) scale(1.2) translate(-128 -128)">
+    <!-- 左侧圆角半方（原上方）：只画上半外廓，朝向星的一侧开放、空心 -->
     <path d="M64 96c0-26.51 21.49-48 48-48h32c26.51 0 48 21.49 48 48"
           stroke="#cc785c" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- 右侧圆角半方（原下方）：镜像，空心 -->
     <path d="M192 160c0 26.51-21.49 48-48 48h-32c-26.51 0-48-21.49-48-48"
           stroke="#a9583e" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- 中央四角星：以画布中心为心，4 外尖 + 4 内凹，实心 -->
     <path d="M128 96 L132 124 L160 128 L132 132 L128 160 L124 132 L96 128 L124 124 Z"
           fill="#cc785c"/>
     <circle cx="128" cy="128" r="5" fill="#a9583e"/>

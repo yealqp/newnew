@@ -20,6 +20,7 @@ import { getToken } from '../utils/auth'
 import { uniqueModelsFromChannels } from '../utils/models'
 import { filterOptionBySearch } from '../utils/format'
 import { iterateSSEData } from '../utils/logContent'
+import { GateLogo } from '../components/GateLogo'
 
 // ---- Types ----
 
@@ -486,7 +487,7 @@ export default function Playground() {
             {!activeId ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 400, color: 'var(--text-dim)', fontSize: 14 }}>
                 <div style={{ textAlign: 'center', padding: 40 }}>
-                  <div style={{ fontSize: 48, marginBottom: 12, opacity: 0.3 }}>✦</div>
+                  <div style={{ marginBottom: 12, opacity: 0.3, display: 'flex', justifyContent: 'center' }}><GateLogo size={64} /></div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>OpenGate 游乐场</div>
                   <div style={{ fontSize: 13 }}>在下方输入消息开始测试你的渠道</div>
                 </div>

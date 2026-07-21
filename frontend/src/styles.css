@@ -506,13 +506,9 @@ h1, .page-title {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-md);
-  background: var(--primary);
+  overflow: hidden;
   display: grid;
   place-items: center;
-  color: var(--primary-foreground);
-  font-family: var(--font-body);
-  font-weight: 500;
-  font-size: 20px;
 }
 
 .login-brand h1 {

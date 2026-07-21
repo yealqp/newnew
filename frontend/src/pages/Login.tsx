@@ -4,6 +4,7 @@ import { Button, Form, Input, message } from 'antd'
 import { Lock, User } from 'lucide-react'
 import { api } from '../api/client'
 import { clearAuth, setAuth } from '../utils/auth'
+import { GateLogo } from '../components/GateLogo'
 
 export default function Login() {
   const nav = useNavigate()
@@ -48,7 +49,7 @@ export default function Login() {
     <div className="login-bg">
       <div className="login-card">
         <div className="login-brand">
-          <div className="logo">✦</div>
+          <div className="logo"><GateLogo size={40} /></div>
           <div>
             <h1>OpenGate</h1>
             <p>OpenAI / Claude 聚合网关</p>

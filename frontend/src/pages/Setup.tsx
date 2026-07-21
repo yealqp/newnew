@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Form, Input, message } from 'antd'
 import { Lock, User, Sparkles } from 'lucide-react'
 import { api } from '../api/client'
+import { GateLogo } from '../components/GateLogo'
 
 export default function Setup() {
   const nav = useNavigate()
@@ -47,7 +48,7 @@ export default function Setup() {
     <div className="login-bg">
       <div className="login-card">
         <div className="login-brand">
-          <div className="logo">✦</div>
+          <div className="logo"><GateLogo size={40} /></div>
           <div>
             <h1>OpenGate</h1>
             <p>首次使用 · 创建管理员账户</p>

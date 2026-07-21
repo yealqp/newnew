@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { clearAuth, getUsername } from '../utils/auth'
+import { GateLogo } from '../components/GateLogo'
 
 const { Sider, Header, Content } = Layout
 
@@ -54,23 +55,7 @@ export default function AppLayout() {
             borderBottom: '1px solid #252320',
           }}
         >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: '#cc785c',
-              display: 'grid',
-              placeItems: 'center',
-              color: '#fff',
-              flexShrink: 0,
-              fontFamily: "'Cormorant Garamond', serif",
-              fontSize: 18,
-              fontWeight: 500,
-            }}
-          >
-            ✦
-          </div>
+          <GateLogo size={36} />
           <div style={{ overflow: 'hidden' }}>
             <div
               style={{
