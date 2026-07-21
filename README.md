@@ -6,11 +6,9 @@
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Rust · axum · sqlx · SQLite（`backend-rust/`，由原 Go 版重写） |
+| 后端 | Rust · axum · sqlx · SQLite |
 | 前端 | React · TypeScript · Vite · Ant Design |
 | 部署 | 本地直接运行（无 Docker） |
-
-> 原 Go（Fiber · GORM）实现保留在 `backend/`，API 与数据库 schema 与 Rust 版完全兼容，两者可指向同一个 `gateway.db` 互换运行。
 
 ## 功能
 
@@ -23,11 +21,11 @@
 
 ## 快速开始
 
-### 1. 后端（Rust）
+### 1. 后端
 
 ```bash
-cd backend-rust
-cp .env.example .env   # 可改 ADMIN_PASSWORD / JWT_SECRET
+cd backend
+cp .env.example .env   # 可改 JWT_SECRET / 端口
 cargo run
 # 或: cargo build --release && ./target/release/gateway.exe
 ```
@@ -35,11 +33,7 @@ cargo run
 默认：
 
 - 地址：`http://127.0.0.1:3000`
-- 管理员：`admin` / `admin123`（首次启动会打印）
-
-> 沿用旧 Go 版数据：把 `.env` 里的 `DB_PATH` 指向原来的 `backend/data/gateway.db` 即可，表结构与密码哈希完全兼容。
->
-> 旧 Go 版启动方式：`cd backend && go run ./cmd/server`。
+- 首次启动访问管理台会引导初始化管理员账号（`/setup`）
 
 ### 2. 前端
 
@@ -110,21 +104,20 @@ cost_rmb = (non_cached_input * input
 
 ## 环境变量
 
-见 [backend-rust/.env.example](backend-rust/.env.example)：
+见 [backend/.env.example](backend/.env.example)：
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `PORT` | `3000` | 监听端口 |
 | `DB_PATH` | `data/gateway.db` | SQLite 路径 |
 | `JWT_SECRET` | … | 管理端 JWT |
-| `ADMIN_USER` / `ADMIN_PASSWORD` | admin / admin123 | 种子管理员 |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | admin / admin123 | 仅配合 `ADMIN_RESET_PASSWORD=1` 找回密码用（管理员通过 `/setup` 页初始化） |
 | `REQUEST_TIMEOUT` | `300` | 上游超时秒 |
 
 ## 目录
 
 ```
-backend-rust/     Rust axum 服务（当前后端）
-backend/          Go Fiber 服务（原实现，保留作参照）
+backend/          Rust axum 服务
 frontend/         React 管理台
 ```
 
