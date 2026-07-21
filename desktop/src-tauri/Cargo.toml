@@ -1,0 +1,16 @@
+[package]
+name = "opengate-desktop"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+gateway = { path = "../../backend", features = ["embed-frontend"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+axum = "0.8"
+
+[profile.release]
+lto = "thin"

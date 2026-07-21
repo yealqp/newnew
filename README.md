@@ -114,11 +114,29 @@ cost_rmb = (non_cached_input * input
 | `ADMIN_USER` / `ADMIN_PASSWORD` | admin / admin123 | 仅配合 `ADMIN_RESET_PASSWORD=1` 找回密码用（管理员通过 `/setup` 页初始化） |
 | `REQUEST_TIMEOUT` | `300` | 上游超时秒 |
 
+## 构建产物
+
+`scripts/` 下提供四种构建脚本（PowerShell）：
+
+| 脚本 | 产物 | 说明 |
+|------|------|------|
+| `build-frontend.ps1` | `frontend/dist/` | 纯前端静态站点 |
+| `build-backend.ps1` | `backend/target/release/gateway.exe` | 纯后端 API 网关（不含 UI） |
+| `build-fullstack.ps1` | `backend/target/release/gateway.exe` | **单文件全栈**：前端嵌入二进制（`--features embed-frontend`），`/` 直接出管理台，SPA 路由自动回退 |
+| `build-desktop.ps1` | `desktop/src-tauri/target/release/opengate-desktop.exe` + NSIS 安装包 | Tauri 2 桌面端：进程内启动网关，WebView 加载本地端口；数据库在系统应用数据目录（加 `-NoBundle` 跳过安装包） |
+
+```powershell
+# 例：构建单文件全栈版
+powershell -ExecutionPolicy Bypass -File scripts/build-fullstack.ps1
+```
+
 ## 目录
 
 ```
-backend/          Rust axum 服务
+backend/          Rust axum 服务（lib + bin；embed-frontend 特性可嵌入前端）
 frontend/         React 管理台
+desktop/          Tauri 2 桌面端外壳
+scripts/          四种构建产物脚本
 ```
 
 ## 说明
