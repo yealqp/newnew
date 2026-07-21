@@ -228,7 +228,7 @@ export default function Logs() {
         title="请求详情"
         open={!!detail}
         onClose={() => setDetail(null)}
-        width={responsiveWidth(820)}
+        size={responsiveWidth(820)}
         destroyOnHidden
       >
         {detail && (

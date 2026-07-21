@@ -34,7 +34,7 @@ export default function FormDrawer({
       title={title}
       open={open}
       onClose={onClose}
-      width={responsiveWidth(width)}
+      size={responsiveWidth(width)}
       destroyOnHidden
       placement="right"
       styles={bodyStyle ? { body: bodyStyle } : undefined}

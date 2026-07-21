@@ -42,9 +42,6 @@ func Init(cfg *config.Config) error {
                 return fmt.Errorf("migrate: %w", err)
         }
 
-        if err := seedAdmin(cfg); err != nil {
-                return err
-        }
         if err := seedSettings(); err != nil {
                 return err
         }

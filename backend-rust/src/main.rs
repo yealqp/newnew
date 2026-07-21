@@ -119,6 +119,8 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(|| async { Json(json!({"status": "ok"})) }))
         .route("/api/admin/login", post(handlers::admin::login))
+        .route("/api/admin/setup/status", get(handlers::admin::setup_status))
+        .route("/api/admin/setup", post(handlers::admin::setup))
         .nest("/api/admin", admin_routes)
         .nest("/v1", v1_routes)
         .layer(from_fn(middleware::request_id_mw))

@@ -66,6 +66,70 @@ pub async fn me(Extension(user): Extension<AuthUser>) -> Response {
     util::ok_resp(json!({"username": user.username, "id": user.user_id}))
 }
 
+// ---- Setup (first-run initialization) ----
+
+pub async fn setup_status(State(st): State<AppState>) -> Response {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&st.pool)
+        .await
+        .unwrap_or(0);
+    util::ok_resp(json!({"initialized": count > 0}))
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+struct SetupReq {
+    username: String,
+    password: String,
+}
+
+pub async fn setup(State(st): State<AppState>, body: Bytes) -> Response {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&st.pool)
+        .await
+        .unwrap_or(0);
+    if count > 0 {
+        return util::fail_resp(400, "already initialized");
+    }
+
+    let req: SetupReq = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return util::fail_resp(400, "invalid body"),
+    };
+    let username = req.username.trim().to_string();
+    if username.len() < 3 {
+        return util::fail_resp(400, "username too short (min 3 characters)");
+    }
+    if req.password.len() < 6 {
+        return util::fail_resp(400, "password too short (min 6 characters)");
+    }
+
+    let hash = match bcrypt::hash(&req.password, bcrypt::DEFAULT_COST) {
+        Ok(h) => h,
+        Err(_) => return util::fail_resp(500, "hash error"),
+    };
+    let now = util::now_db_string();
+    let res = sqlx::query(
+        "INSERT INTO users (username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&username)
+    .bind(&hash)
+    .bind(&now)
+    .bind(&now)
+    .execute(&st.pool)
+    .await;
+    let user_id = match res {
+        Ok(r) => r.last_insert_rowid(),
+        Err(e) => return util::fail_resp(500, &e.to_string()),
+    };
+
+    let token = match middleware::generate_jwt(&st.cfg.jwt_secret, user_id, &username) {
+        Ok(t) => t,
+        Err(_) => return util::fail_resp(500, "token error"),
+    };
+    util::ok_resp(json!({"token": token, "username": username}))
+}
+
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 struct ChangePasswordReq {
@@ -1205,11 +1269,13 @@ async fn dashboard_range(pool: &SqlitePool, start_str: &str, end_str: &str, gran
     const HOUR_EXPR: &str = "strftime('%Y-%m-%d %H:00', created_at)";
     const DAY_EXPR: &str = "strftime('%Y-%m-%d', created_at)";
     const WEEK_EXPR: &str = "date(created_at, '-' || ((strftime('%w', created_at) + 6) % 7) || ' days')";
+    const MONTH_EXPR: &str = "strftime('%Y-%m', created_at)";
 
     let bucket_expr: &str = match granularity {
         "hour" => HOUR_EXPR,
         "day" => DAY_EXPR,
         "week" => WEEK_EXPR,
+        "month" => MONTH_EXPR,
         _ => {
             if (end - start) <= Duration::hours(48) {
                 HOUR_EXPR

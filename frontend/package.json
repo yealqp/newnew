@@ -11,16 +11,17 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
-    "@lobehub/icons": "^5.13.0",
+    "@lobehub/icons": "^5.14.0",
+    "@visactor/react-vchart": "^2.1.4",
+    "@visactor/vchart": "^2.1.4",
     "antd": "^6.5.1",
     "axios": "^1.18.1",
     "dayjs": "^1.11.21",
-    "lucide-react": "1.24.0",
+    "lucide-react": "1.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.1",
-    "recharts": "^3.9.2",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
@@ -30,6 +31,6 @@
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.74.0",
     "typescript": "~7.0.2",
-    "vite": "^8.1.4"
+    "vite": "^8.1.5"
   }
 }

@@ -13,7 +13,6 @@ use crate::models::{
     PRICE_POLICY_ALLOW, SETTING_LOG_BODY_MAX_BYTES, SETTING_PRICE_MISSING_POLICY,
     SETTING_REQUEST_TIMEOUT,
 };
-use crate::util::now_db_string;
 
 const SCHEMA: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS `users` (`id` integer PRIMARY KEY AUTOINCREMENT,`username` text NOT NULL,`password_hash` text NOT NULL,`created_at` datetime,`updated_at` datetime)",
@@ -53,36 +52,14 @@ pub async fn init(cfg: &Config) -> Result<SqlitePool, Box<dyn std::error::Error>
         sqlx::query(stmt).execute(&pool).await?;
     }
 
-    seed_admin(&pool, cfg).await?;
+    admin_password_recovery(&pool, cfg).await?;
     seed_settings(&pool).await?;
     Ok(pool)
 }
 
-async fn seed_admin(pool: &SqlitePool, cfg: &Config) -> Result<(), sqlx::Error> {
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(pool)
-        .await?;
-    if count == 0 {
-        let hash = bcrypt::hash(&cfg.admin_password, bcrypt::DEFAULT_COST)
-            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
-        let now = now_db_string();
-        sqlx::query(
-            "INSERT INTO users (username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?)",
-        )
-        .bind(&cfg.admin_user)
-        .bind(&hash)
-        .bind(&now)
-        .bind(&now)
-        .execute(pool)
-        .await?;
-        info!(
-            "[seed] admin user created: username={} password={}",
-            cfg.admin_user, cfg.admin_password
-        );
-        return Ok(());
-    }
-
-    // Optional recovery: ADMIN_RESET_PASSWORD=1 resets admin password from env
+/// First-run admin creation now happens via the /api/admin/setup flow; this
+/// only keeps the ADMIN_RESET_PASSWORD escape hatch for locked-out admins.
+async fn admin_password_recovery(pool: &SqlitePool, cfg: &Config) -> Result<(), sqlx::Error> {
     let reset = std::env::var("ADMIN_RESET_PASSWORD").unwrap_or_default();
     if reset == "1" || reset == "true" {
         let hash = bcrypt::hash(&cfg.admin_password, bcrypt::DEFAULT_COST)

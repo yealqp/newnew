@@ -15,8 +15,10 @@ func Setup(app *fiber.App) {
                 return c.JSON(fiber.Map{"status": "ok"})
         })
 
-        // Admin API — login is public; everything else requires JWT
+        // Admin API — login & setup are public; everything else requires JWT
         app.Post("/api/admin/login", admin.Login)
+        app.Get("/api/admin/setup/status", admin.SetupStatus)
+        app.Post("/api/admin/setup", admin.Setup)
 
         auth := app.Group("/api/admin", middleware.AdminAuth())
         auth.Get("/me", admin.Me)
